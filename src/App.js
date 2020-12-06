@@ -1,25 +1,20 @@
+import React, { useRef } from 'react';
 import logo from './logo.svg';
+import { Route, Switch, Redirect } from 'react-router-dom';
+import { io as socketIOClient } from 'socket.io-client';
+import Home from './PAGE/home/index';
+import Broadcast from './PAGE/broadcast/index';
 import './App.css';
 
 function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+    return (
+        <div className='App'>
+            <Switch>
+                <Route path='/' exact component={Home} />
+                <Route path='/broadcast/:view' exact component={Broadcast} />
+            </Switch>
+        </div>
+    );
 }
 
 export default App;
