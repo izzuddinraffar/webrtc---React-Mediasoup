@@ -174,8 +174,8 @@ function Publish(props: any) {
 
     function handleDisconnect() {
         if (localStream.current) {
-            pauseVideo(localVideo);
-            stopLocalStream(localStream);
+            pauseVideo(localVideo.current);
+            stopLocalStream(localStream.current);
             localStream.current = null;
         }
         if (videoProducer.current) {

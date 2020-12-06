@@ -11,6 +11,8 @@ function Subscribe(props: any) {
     const audioConsumer: any = React.useRef();
     let socket: any = props.userSocket;
 
+    const [isSubscribed, setIsSubscribe] = React.useState(false);
+
     // return Promise
     function playVideo(element: any, stream: any) {
         if (element.srcObject) {
@@ -117,17 +119,17 @@ function Subscribe(props: any) {
         });
 
         videoConsumer.current = await consumeAndResume(
-            consumerTransport,
+            consumerTransport.current,
             'video'
         );
         audioConsumer.current = await consumeAndResume(
-            consumerTransport,
+            consumerTransport.current,
             'audio'
         );
     }
 
     async function consumeAndResume(transport: any, kind: any) {
-        const consumer = await consume(consumerTransport.current, kind);
+        const consumer = await consume(transport, kind);
         if (consumer) {
             console.log('-- track exist, consumer ready. kind=' + kind);
 
@@ -258,16 +260,16 @@ function Subscribe(props: any) {
         });
         socket.on('newProducer', async function (message: any) {
             console.log('socket.io newProducer:', message);
-            if (consumerTransport) {
+            if (consumerTransport.current) {
                 // start consume
                 if (message.kind === 'video') {
                     videoConsumer.current = await consumeAndResume(
-                        consumerTransport,
+                        consumerTransport.current,
                         message.kind
                     );
                 } else if (message.kind === 'audio') {
                     audioConsumer.current = await consumeAndResume(
-                        consumerTransport,
+                        consumerTransport.current,
                         message.kind
                     );
                 }
@@ -310,18 +312,21 @@ function Subscribe(props: any) {
         <div>
             <button onClick={handleSubscribe}>Subscribe</button>
             <button onClick={handleDisconnect}>Disconnect</button>
-            remote video
-            <br />
+
             <div>
-                <video
-                    ref={remoteVideo}
-                    autoPlay
-                    style={{
-                        width: '240px',
-                        height: '180px',
-                        border: '1px solid black',
-                    }}
-                ></video>
+                remote video
+                <br />
+                <div>
+                    <video
+                        ref={remoteVideo}
+                        autoPlay
+                        style={{
+                            width: '240px',
+                            height: '180px',
+                            border: '1px solid black',
+                        }}
+                    ></video>
+                </div>
             </div>
         </div>
     );
