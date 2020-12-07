@@ -2,6 +2,7 @@ function socketMain(io) {
     const broadcastIO = io.of('/video-broadcast');
     broadcastIO.on('connection', (socket) => {
         console.log('broadcast');
+
         socket.on('getRouterRtpCapabilities', (data, callback) => {
             if (router) {
                 console.log(
@@ -244,54 +245,54 @@ function socketMain(io) {
         function sendback(socket, message) {
             socket.emit('message', message);
         }
+
+        function getId(socket) {
+            return socket.id;
+        }
+
+        function getClientCount() {
+            // WARN: undocumented method to get clients number
+            return io.eio.clientsCount;
+        }
+
+        function cleanUpPeer(socket) {
+            const id = getId(socket);
+            const consumer = getVideoConsumer(id);
+            if (consumer) {
+                consumer.close();
+                removeVideoConsumer(id);
+            }
+
+            const transport = getConsumerTrasnport(id);
+            if (transport) {
+                transport.close();
+                removeConsumerTransport(id);
+            }
+
+            if (producerSocketId === id) {
+                console.log('---- cleanup producer ---');
+                if (videoProducer) {
+                    videoProducer.close();
+                    videoProducer = null;
+                }
+                if (audioProducer) {
+                    audioProducer.close();
+                    audioProducer = null;
+                }
+
+                if (producerTransport) {
+                    producerTransport.close();
+                    producerTransport = null;
+                }
+
+                producerSocketId = null;
+
+                // --- clenaup all consumers ---
+                //console.log('---- cleanup clenaup all consumers ---');
+                //removeAllConsumers();
+            }
+        }
     });
-
-    function getId(socket) {
-        return socket.id;
-    }
-
-    function getClientCount() {
-        // WARN: undocumented method to get clients number
-        return io.eio.clientsCount;
-    }
-
-    function cleanUpPeer(socket) {
-        const id = getId(socket);
-        const consumer = getVideoConsumer(id);
-        if (consumer) {
-            consumer.close();
-            removeVideoConsumer(id);
-        }
-
-        const transport = getConsumerTrasnport(id);
-        if (transport) {
-            transport.close();
-            removeConsumerTransport(id);
-        }
-
-        if (producerSocketId === id) {
-            console.log('---- cleanup producer ---');
-            if (videoProducer) {
-                videoProducer.close();
-                videoProducer = null;
-            }
-            if (audioProducer) {
-                audioProducer.close();
-                audioProducer = null;
-            }
-
-            if (producerTransport) {
-                producerTransport.close();
-                producerTransport = null;
-            }
-
-            producerSocketId = null;
-
-            // --- clenaup all consumers ---
-            //console.log('---- cleanup clenaup all consumers ---');
-            //removeAllConsumers();
-        }
-    }
 
     // ========= mediasoup ===========
     const mediasoup = require('mediasoup');

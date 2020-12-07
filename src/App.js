@@ -1,19 +1,26 @@
-import React, { useRef } from 'react';
+import React, { Suspense } from 'react';
 import logo from './logo.svg';
 import { Route, Switch, Redirect } from 'react-router-dom';
 import { io as socketIOClient } from 'socket.io-client';
-import Home from './PAGE/home/index';
-import Broadcast from './PAGE/video-broadcast/index';
-import Conference from './PAGE/video-conference/index';
 import './App.css';
+
+const Home = React.lazy(() => import('./PAGE/home/index'));
+const Broadcast = React.lazy(() => import('./PAGE/video-broadcast/index'));
+const Conference = React.lazy(() => import('./PAGE/video-conference/index'));
 
 function App() {
     return (
         <div className='App'>
             <Switch>
-                <Route path='/' exact component={Home} />
-                <Route path='/broadcast/:view' exact component={Broadcast} />
-                <Route path='/conference' exact component={Conference} />
+                <Suspense fallback={<div>Loading...</div>}>
+                    <Route path='/' exact component={Home} />
+                    <Route
+                        path='/broadcast/:view'
+                        exact
+                        component={Broadcast}
+                    />
+                    <Route path='/conference' exact component={Conference} />
+                </Suspense>
             </Switch>
         </div>
     );

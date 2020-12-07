@@ -1,4 +1,4 @@
-const broadcast = require('./video-broadcast');
+const mediasoupServer = require('./mediasoup-server');
 
 function socketMain(io) {
     io.on('connection', (socket) => {
@@ -8,6 +8,6 @@ function socketMain(io) {
             console.log('User offline');
         });
     });
-    broadcast(io);
+    mediasoupServer(io);
 }
 module.exports = socketMain;

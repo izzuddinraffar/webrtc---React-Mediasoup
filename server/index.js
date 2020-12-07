@@ -34,6 +34,7 @@ app.get('/', (req, res) => {
     res.send('webrtc server running');
 });
 
+// START SERVER
 let webServer = null;
 if (serverOptions.useHttps) {
     // -- https ---
@@ -62,7 +63,6 @@ if (serverOptions.useHttps) {
 }
 
 //SOCKET CONNECT
-
 const socketMain = require('./socket/index');
 
 const io = socketIo(webServer, {
@@ -73,5 +73,3 @@ const io = socketIo(webServer, {
 });
 
 socketMain(io);
-
-// START SERVER
