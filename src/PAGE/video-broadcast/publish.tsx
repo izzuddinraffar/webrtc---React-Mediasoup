@@ -246,7 +246,9 @@ function Publish(props: any) {
                 }
 
                 clientId.current = message.id;
-                console.log('connected to server. clientId=' + clientId);
+                console.log(
+                    'connected to server. clientId=' + clientId.current
+                );
             } else {
                 console.error('UNKNOWN message from server:', message);
             }

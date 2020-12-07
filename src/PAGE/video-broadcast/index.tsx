@@ -4,7 +4,9 @@ import Publish from './publish';
 import { io as socketIOClient } from 'socket.io-client';
 import { config } from '../../app.config';
 
-const userSocket: any = socketIOClient(config.SERVER_ENDPOINT + '/broadcast');
+const userSocket: any = socketIOClient(
+    config.SERVER_ENDPOINT + '/video-broadcast'
+);
 
 function Home(props: any) {
     const view = props.match.params.view;

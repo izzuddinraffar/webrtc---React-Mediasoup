@@ -1,4 +1,4 @@
-const broadcast = require('./broadcast');
+const broadcast = require('./video-broadcast');
 
 function socketMain(io) {
     io.on('connection', (socket) => {

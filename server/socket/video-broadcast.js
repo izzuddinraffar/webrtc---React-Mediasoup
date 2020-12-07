@@ -1,5 +1,5 @@
 function socketMain(io) {
-    const broadcastIO = io.of('/broadcast');
+    const broadcastIO = io.of('/video-broadcast');
     broadcastIO.on('connection', (socket) => {
         console.log('broadcast');
         socket.on('getRouterRtpCapabilities', (data, callback) => {
