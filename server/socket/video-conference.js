@@ -1,7 +1,7 @@
 function socketMain(io) {
     const conferenceIO = io.of('/video-conference');
     conferenceIO.on('connection', (socket) => {
-        console.log('broadcast');
+        console.log('conference');
 
         socket.on('getRouterRtpCapabilities', (data, callback) => {
             if (router) {

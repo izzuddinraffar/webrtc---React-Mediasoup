@@ -3,9 +3,22 @@ import { Device } from 'mediasoup-client';
 
 const CreateRemoteVideos = (props: any) => {
     const remoteVideo: any = React.useRef();
-    // React.useEffect(() => {
-    //     remoteVideo.current.s;
-    // }, []);
+    React.useEffect(() => {
+        // if (remoteVideo.current.srcObject) {
+        //     remoteVideo.current.srcObject.addTrack(props.track);
+        //         return;
+        //     }
+        console.log('CreateRemoteVideos');
+        console.log(props);
+        props
+            .playVideo(remoteVideo.current, props.peer.stream)
+            .then(() => {
+                remoteVideo.current.volume = 1.0;
+            })
+            .catch((err: any) => {
+                console.error('media ERROR:', err);
+            });
+    }, []);
     return (
         <video
             ref={remoteVideo}
@@ -135,26 +148,40 @@ function MeetRoom(props: any) {
     }
 
     function addRemoteTrack(id: any, track: any) {
-        let video: any = findRemoteVideo(id);
-        if (!video) {
-            video = addRemoteVideo(id);
-            video.controls = '1';
-        }
+        // let video: any = findRemoteVideo(id);
+        // if (!video) {
+        //     video = addRemoteVideo(id);
+        //     video.controls = '1';
+        // }
 
-        if (video.srcObject) {
-            video.srcObject.addTrack(track);
-            return;
+        // if (video.srcObject) {
+        //     video.srcObject.addTrack(track);
+        //     return;
+        // }
+
+        if (id === clientId.current) {
+            return false;
         }
 
         const newStream = new MediaStream();
         newStream.addTrack(track);
-        playVideo(video, newStream)
-            .then(() => {
-                video.volume = 1.0;
-            })
-            .catch((err: any) => {
-                console.error('media ERROR:', err);
-            });
+
+        setRemoteVideos((peers: any) => {
+            const newPeers: any = peers;
+            newPeers[id] = {
+                stream: newStream,
+                socket_id: id,
+            };
+            return { ...peers, ...newPeers };
+        });
+
+        // playVideo(video, newStream)
+        //     .then(() => {
+        //         video.volume = 1.0;
+        //     })
+        //     .catch((err: any) => {
+        //         console.error('media ERROR:', err);
+        //     });
     }
 
     function addRemoteVideo(id: any) {
@@ -200,7 +227,7 @@ function MeetRoom(props: any) {
         trackKind: any
     ) {
         console.log('--start of consumeAdd -- kind=%s', trackKind);
-        const { rtpCapabilities } = device;
+        const { rtpCapabilities } = device.current;
         //const data = await socket.request('consume', { rtpCapabilities });
         const data = await sendRequest('consumeAdd', {
             rtpCapabilities: rtpCapabilities,
@@ -287,7 +314,7 @@ function MeetRoom(props: any) {
         console.log('--- createProducerTransport --');
         const params = await sendRequest('createProducerTransport', {});
         console.log('transport params:', params);
-        producerTransport.current = device.createSendTransport(params);
+        producerTransport.current = device.current.createSendTransport(params);
         console.log('createSendTransport:', producerTransport.current);
 
         // --- join & start publish --
@@ -384,7 +411,9 @@ function MeetRoom(props: any) {
         if (!consumerTransport.current) {
             const params = await sendRequest('createConsumerTransport', {});
             console.log('transport params:', params);
-            consumerTransport.current = device.createRecvTransport(params);
+            consumerTransport.current = device.current.createRecvTransport(
+                params
+            );
             console.log('createConsumerTransport:', consumerTransport.current);
 
             // --- join & start publish --
@@ -646,7 +675,13 @@ function MeetRoom(props: any) {
             <div>remote videos</div>
             {Object.keys(remoteVideos).map((key: any, index: number) => {
                 const peer: any = remoteVideos[key];
-                return <CreateRemoteVideos key={peer.socket_id} peer={peer} />;
+                return (
+                    <CreateRemoteVideos
+                        key={peer.socket_id}
+                        peer={peer}
+                        playVideo={playVideo}
+                    />
+                );
             })}
         </div>
     );
