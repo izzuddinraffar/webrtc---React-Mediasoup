@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { Device } from 'mediasoup-client';
-
+import { io as socketIOClient } from 'socket.io-client';
+import { config } from '../../app.config';
 function Publish(props: any) {
     const localVideo: any = React.useRef();
     const localStream: any = React.useRef();
@@ -9,17 +10,19 @@ function Publish(props: any) {
     const producerTransport: any = React.useRef();
     const videoProducer: any = React.useRef();
     const audioProducer: any = React.useRef();
-    let socket: any = props.userSocket;
+    const socketRef: any = React.useRef();
 
     const [useVideo, setUseVideo] = React.useState(true);
     const [useAudio, setUseAudio] = React.useState(true);
+    const [isStartMedia, setIsStartMedia] = React.useState(false);
+    const [isPublished, setIsPublished] = React.useState(false);
 
     // ============ UI button ==========
     const handleUseVideo = (e: any) => {
-        setUseVideo(e.target.value);
+        setUseVideo(!useVideo);
     };
     const handleUseAudio = (e: any) => {
-        setUseAudio(e.target.value);
+        setUseAudio(!useAudio);
     };
 
     const handleStartMedia = () => {
@@ -33,6 +36,7 @@ function Publish(props: any) {
             .then((stream: any) => {
                 localStream.current = stream;
                 playVideo(localVideo.current, localStream.current);
+                setIsStartMedia(true);
             })
             .catch((err) => {
                 console.error('media ERROR:', err);
@@ -69,6 +73,7 @@ function Publish(props: any) {
             pauseVideo(localVideo.current);
             stopLocalStream(localStream.current);
             localStream.current = null;
+            setIsStartMedia(false);
         }
     }
 
@@ -79,12 +84,12 @@ function Publish(props: any) {
         }
 
         // --- connect socket.io ---
-        // if (!isSocketConnected()) {
-        //   await connectSocket().catch(err => {
-        //     console.error(err);
-        //     return;
-        //   });
-
+        if (!socketRef.current) {
+            await connectSocket().catch((err: any) => {
+                console.error(err);
+                return;
+            });
+        }
         // --- get capabilities --
         const data = await sendRequest('getRouterRtpCapabilities', {});
         console.log('getRouterRtpCapabilities:', data);
@@ -140,6 +145,7 @@ function Publish(props: any) {
 
                 case 'connected':
                     console.log('published');
+                    setIsPublished(true);
                     break;
 
                 case 'failed':
@@ -192,6 +198,8 @@ function Publish(props: any) {
         }
 
         disconnectSocket();
+        setIsPublished(false);
+        setIsStartMedia(false);
     }
 
     const loadDevice = async (routerRtpCapabilities: any) => {
@@ -212,9 +220,9 @@ function Publish(props: any) {
     };
 
     function disconnectSocket() {
-        if (socket) {
-            socket.close();
-            socket = null;
+        if (socketRef.current) {
+            socketRef.current.close();
+            socketRef.current = null;
             clientId.current = null;
             console.log('socket.io closed..');
         }
@@ -222,7 +230,7 @@ function Publish(props: any) {
 
     function sendRequest(type: any, data: any) {
         return new Promise((resolve, reject) => {
-            socket.emit(type, data, (err: any, response: any) => {
+            socketRef.current.emit(type, data, (err: any, response: any) => {
                 if (!err) {
                     // Success response, so pass the mediasoup response to the local Room.
                     resolve(response);
@@ -233,35 +241,54 @@ function Publish(props: any) {
         });
     }
 
-    React.useEffect(() => {
-        socket.on('message', function (message: any) {
-            console.log('socket.io message:', message);
-            if (message.type === 'welcome') {
-                if (socket.id !== message.id) {
-                    console.warn(
-                        'WARN: something wrong with clientID',
-                        socket.io,
-                        message.id
-                    );
-                }
+    const connectSocket: any = () => {
+        if (socketRef.current == null) {
+            const io: any = socketIOClient(
+                config.SERVER_ENDPOINT + '/video-broadcast'
+            );
+            socketRef.current = io;
+        }
 
-                clientId.current = message.id;
-                console.log(
-                    'connected to server. clientId=' + clientId.current
-                );
-            } else {
-                console.error('UNKNOWN message from server:', message);
-            }
+        return new Promise((resolve: any, reject: any) => {
+            const socket = socketRef.current;
+            socket.on('connect', function (evt: any) {
+                console.log('socket.io connected()');
+            });
+            socket.on('error', function (err: any) {
+                console.error('socket.io ERROR:', err);
+                reject(err);
+            });
+            socket.on('message', function (message: any) {
+                console.log('socket.io message:', message);
+                if (message.type === 'welcome') {
+                    if (socket.id !== message.id) {
+                        console.warn(
+                            'WARN: something wrong with clientID',
+                            socket.io,
+                            message.id
+                        );
+                    }
+
+                    clientId.current = message.id;
+                    console.log(
+                        'connected to server. clientId=' + clientId.current
+                    );
+                    resolve();
+                } else {
+                    console.error('UNKNOWN message from server:', message);
+                }
+            });
+            socket.on('newProducer', async function (message: any) {
+                console.warn('IGNORE socket.io newProducer:', message);
+            });
         });
-        socket.on('newProducer', async function (message: any) {
-            console.warn('IGNORE socket.io newProducer:', message);
-        });
-    }, []);
+    };
 
     return (
         <div>
             <div>
                 <input
+                    disabled={isStartMedia}
                     onChange={handleUseVideo}
                     type='checkbox'
                     checked={useVideo}
@@ -270,17 +297,35 @@ function Publish(props: any) {
             </div>
             <div>
                 <input
+                    disabled={isStartMedia}
                     onChange={handleUseAudio}
                     type='checkbox'
                     checked={useAudio}
                 ></input>
                 <label>audio</label>
             </div>
-            <button onClick={handleStartMedia}>Start Media</button>
-            <button onClick={handleStopMedia}>Stop Media</button>
+            <button disabled={isStartMedia} onClick={handleStartMedia}>
+                Start Media
+            </button>
+            <button
+                disabled={!isStartMedia || isPublished}
+                onClick={handleStopMedia}
+            >
+                Stop Media
+            </button>
 
-            <button onClick={handlePublish}>publish</button>
-            <button onClick={handleDisconnect}>Disconnect</button>
+            <button
+                disabled={isPublished || !isStartMedia}
+                onClick={handlePublish}
+            >
+                publish
+            </button>
+            <button
+                disabled={!isPublished || !isStartMedia}
+                onClick={handleDisconnect}
+            >
+                Disconnect
+            </button>
             <div>
                 local video
                 <video

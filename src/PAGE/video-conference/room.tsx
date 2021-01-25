@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { Device } from 'mediasoup-client';
-
+import { io as socketIOClient } from 'socket.io-client';
+import { config } from '../../app.config';
 const CreateRemoteVideos = (props: any) => {
     const remoteVideo: any = React.useRef();
     React.useEffect(() => {
@@ -31,6 +32,7 @@ const CreateRemoteVideos = (props: any) => {
         ></video>
     );
 };
+export const MemoizedCreateRemoteVideos = React.memo(CreateRemoteVideos);
 
 function MeetRoom(props: any) {
     const localVideo: any = React.useRef();
@@ -43,18 +45,20 @@ function MeetRoom(props: any) {
     const consumerTransport: any = React.useRef();
     const videoConsumers: any = React.useRef({});
     const audioConsumers: any = React.useRef({});
-    let socket: any = props.userSocket;
+    const socketRef: any = React.useRef();
 
     const [useVideo, setUseVideo] = React.useState(true);
     const [useAudio, setUseAudio] = React.useState(true);
+    const [isStartMedia, setIsStartMedia] = React.useState(false);
+    const [isConnected, setIsConnected] = React.useState(false);
     const [remoteVideos, setRemoteVideos]: any = React.useState({});
 
     // ============ UI button ==========
     const handleUseVideo = (e: any) => {
-        setUseVideo(e.target.value);
+        setUseVideo(!useVideo);
     };
     const handleUseAudio = (e: any) => {
-        setUseAudio(e.target.value);
+        setUseAudio(!useAudio);
     };
 
     const handleStartMedia = () => {
@@ -68,6 +72,7 @@ function MeetRoom(props: any) {
             .then((stream: any) => {
                 localStream.current = stream;
                 playVideo(localVideo.current, localStream.current);
+                setIsStartMedia(true);
             })
             .catch((err) => {
                 console.error('media ERROR:', err);
@@ -79,6 +84,7 @@ function MeetRoom(props: any) {
             pauseVideo(localVideo.current);
             stopLocalStream(localStream.current);
             localStream.current = null;
+            setIsStartMedia(false);
         }
     }
 
@@ -120,6 +126,8 @@ function MeetRoom(props: any) {
         removeAllRemoteVideo();
 
         disconnectSocket();
+        setIsConnected(false);
+        setIsStartMedia(false);
     }
 
     function playVideo(element: any, stream: any) {
@@ -202,7 +210,12 @@ function MeetRoom(props: any) {
 
     function removeRemoteVideo(id: any) {
         console.log(' ---- removeRemoteVideo() id=' + id);
-        let element = document.getElementById('remote_' + id);
+        setRemoteVideos((peers: any) => {
+            const newPeers: any = peers;
+            delete newPeers[id];
+
+            return { ...peers, ...newPeers };
+        });
         // if (element) {
         //     element.pause();
         //     element.srcObject = null;
@@ -213,6 +226,12 @@ function MeetRoom(props: any) {
     }
 
     function removeAllRemoteVideo() {
+        console.log(' ---- removeAllRemoteVideo() id');
+        setRemoteVideos((peers: any) => {
+            const newPeers = {};
+
+            return { ...newPeers };
+        });
         // while (remoteContainer.firstChild) {
         //     remoteContainer.firstChild.pause();
         //     remoteContainer.firstChild.srcObject = null;
@@ -300,10 +319,12 @@ function MeetRoom(props: any) {
         }
 
         // --- connect socket.io ---
-        // await connectSocket().catch((err) => {
-        //     console.error(err);
-        //     return;
-        // });
+        await connectSocket().catch((err: any) => {
+            console.error(err);
+            return;
+        });
+
+        console.log('connected');
 
         // --- get capabilities --
         const data = await sendRequest('getRouterRtpCapabilities', {});
@@ -361,6 +382,7 @@ function MeetRoom(props: any) {
 
                 case 'connected':
                     console.log('published');
+                    setIsConnected(true);
                     break;
 
                 case 'failed':
@@ -394,11 +416,13 @@ function MeetRoom(props: any) {
     }
 
     async function subscribe() {
-        // if (!isSocketConnected()) {
-        //     await connectSocket().catch((err) => {
-        //         console.error(err);
-        //         return;
-        //     });
+        // console.log(socketRef.current);
+        if (!socketRef.current) {
+            await connectSocket().catch((err: any) => {
+                console.error(err);
+                return;
+            });
+        }
 
         // --- get capabilities --
         const data = await sendRequest('getRouterRtpCapabilities', {});
@@ -474,7 +498,7 @@ function MeetRoom(props: any) {
 
     function sendRequest(type: any, data: any) {
         return new Promise((resolve: any, reject: any) => {
-            socket.emit(type, data, (err: any, response: any) => {
+            socketRef.current.emit(type, data, (err: any, response: any) => {
                 if (!err) {
                     // Success response, so pass the mediasoup response to the local Room.
                     resolve(response);
@@ -518,9 +542,9 @@ function MeetRoom(props: any) {
     }
 
     function disconnectSocket() {
-        if (socket) {
-            socket.close();
-            socket = null;
+        if (socketRef.current) {
+            socketRef.current.close();
+            socketRef.current = null;
             clientId.current = null;
             console.log('socket.io closed..');
         }
@@ -572,75 +596,109 @@ function MeetRoom(props: any) {
         }
     }
 
-    React.useEffect(() => {
-        socket.on('message', function (message: any) {
-            console.log('socket.io message:', message);
-            if (message.type === 'welcome') {
-                if (socket.id !== message.id) {
-                    console.warn(
-                        'WARN: something wrong with clientID',
-                        socket.io,
-                        message.id
+    const connectSocket: any = () => {
+        if (socketRef.current == null) {
+            const io: any = socketIOClient(
+                config.SERVER_ENDPOINT + '/video-conference'
+            );
+            socketRef.current = io;
+        }
+
+        return new Promise((resolve: any, reject: any) => {
+            const socket = socketRef.current;
+
+            socket.on('connect', function (evt: any) {
+                console.log('socket.io connected()');
+            });
+            socket.on('error', function (err: any) {
+                console.error('socket.io ERROR:', err);
+                reject(err);
+            });
+            socket.on('message', function (message: any) {
+                console.log('socket.io message:', message);
+                if (message.type === 'welcome') {
+                    if (socket.id !== message.id) {
+                        console.warn(
+                            'WARN: something wrong with clientID',
+                            socket.io,
+                            message.id
+                        );
+                    }
+
+                    clientId.current = message.id;
+                    console.log(
+                        'connected to server. clientId=' + clientId.current
+                    );
+                    resolve();
+                } else {
+                    console.error('UNKNOWN message from server:', message);
+                }
+            });
+            socket.on('newProducer', function (message: any) {
+                console.log('socket.io newProducer:', message);
+                const remoteId = message.socketId;
+                const prdId = message.producerId;
+                const kind = message.kind;
+                if (kind === 'video') {
+                    console.log(
+                        '--try consumeAdd remoteId=' +
+                            remoteId +
+                            ', prdId=' +
+                            prdId +
+                            ', kind=' +
+                            kind
+                    );
+                    consumeAdd(
+                        consumerTransport.current,
+                        remoteId,
+                        prdId,
+                        kind
+                    );
+                } else if (kind === 'audio') {
+                    //console.warn('-- audio NOT SUPPORTED YET. skip remoteId=' + remoteId + ', prdId=' + prdId + ', kind=' + kind);
+                    console.log(
+                        '--try consumeAdd remoteId=' +
+                            remoteId +
+                            ', prdId=' +
+                            prdId +
+                            ', kind=' +
+                            kind
+                    );
+                    consumeAdd(
+                        consumerTransport.current,
+                        remoteId,
+                        prdId,
+                        kind
                     );
                 }
+            });
 
-                clientId.current = message.id;
+            socket.on('producerClosed', function (message: any) {
+                console.log('socket.io producerClosed:', message);
+                const localId = message.localId;
+                const remoteId = message.remoteId;
+                const kind = message.kind;
                 console.log(
-                    'connected to server. clientId=' + clientId.current
+                    '--try removeConsumer remoteId=%s, localId=%s, track=%s',
+                    remoteId,
+                    localId,
+                    kind
                 );
-            } else {
-                console.error('UNKNOWN message from server:', message);
-            }
+                removeConsumer(remoteId, kind);
+                removeRemoteVideo(remoteId);
+            });
         });
-        socket.on('newProducer', function (message: any) {
-            console.log('socket.io newProducer:', message);
-            const remoteId = message.socketId;
-            const prdId = message.producerId;
-            const kind = message.kind;
-            if (kind === 'video') {
-                console.log(
-                    '--try consumeAdd remoteId=' +
-                        remoteId +
-                        ', prdId=' +
-                        prdId +
-                        ', kind=' +
-                        kind
-                );
-                consumeAdd(consumerTransport.current, remoteId, prdId, kind);
-            } else if (kind === 'audio') {
-                //console.warn('-- audio NOT SUPPORTED YET. skip remoteId=' + remoteId + ', prdId=' + prdId + ', kind=' + kind);
-                console.log(
-                    '--try consumeAdd remoteId=' +
-                        remoteId +
-                        ', prdId=' +
-                        prdId +
-                        ', kind=' +
-                        kind
-                );
-                consumeAdd(consumerTransport.current, remoteId, prdId, kind);
-            }
-        });
+    };
 
-        socket.on('producerClosed', function (message: any) {
-            console.log('socket.io producerClosed:', message);
-            const localId = message.localId;
-            const remoteId = message.remoteId;
-            const kind = message.kind;
-            console.log(
-                '--try removeConsumer remoteId=%s, localId=%s, track=%s',
-                remoteId,
-                localId,
-                kind
-            );
-            removeConsumer(remoteId, kind);
-            removeRemoteVideo(remoteId);
-        });
-    }, []);
+    // React.useEffect(() => {
+
+    // }, []);
 
     return (
         <div>
             <div>
                 <input
+                    disabled={isStartMedia}
                     onChange={handleUseVideo}
                     type='checkbox'
                     checked={useVideo}
@@ -649,17 +707,36 @@ function MeetRoom(props: any) {
             </div>
             <div>
                 <input
+                    disabled={isStartMedia}
                     onChange={handleUseAudio}
                     type='checkbox'
                     checked={useAudio}
                 ></input>
                 <label>audio</label>
             </div>
-            <button onClick={handleStartMedia}>Start Media</button>
-            <button onClick={handleStopMedia}>Stop Media</button>
 
-            <button onClick={handleConnect}>Connect</button>
-            <button onClick={handleDisconnect}>Disconnect</button>
+            <button disabled={isStartMedia} onClick={handleStartMedia}>
+                Start Media
+            </button>
+            <button
+                disabled={!isStartMedia || isConnected}
+                onClick={handleStopMedia}
+            >
+                Stop Media
+            </button>
+
+            <button
+                disabled={isConnected || !isStartMedia}
+                onClick={handleConnect}
+            >
+                Connect
+            </button>
+            <button
+                disabled={!isConnected || !isStartMedia}
+                onClick={handleDisconnect}
+            >
+                Disconnect
+            </button>
             <div>
                 local video
                 <video
@@ -676,7 +753,7 @@ function MeetRoom(props: any) {
             {Object.keys(remoteVideos).map((key: any, index: number) => {
                 const peer: any = remoteVideos[key];
                 return (
-                    <CreateRemoteVideos
+                    <MemoizedCreateRemoteVideos
                         key={peer.socket_id}
                         peer={peer}
                         playVideo={playVideo}
