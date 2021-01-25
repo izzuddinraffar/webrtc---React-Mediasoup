@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { Device } from 'mediasoup-client';
-
+import { io as socketIOClient } from 'socket.io-client';
+import { config } from '../../app.config';
 function Subscribe(props: any) {
     const remoteVideo: any = React.useRef();
     const localStream: any = React.useRef();
@@ -9,9 +10,11 @@ function Subscribe(props: any) {
     const consumerTransport: any = React.useRef();
     const videoConsumer: any = React.useRef();
     const audioConsumer: any = React.useRef();
-    let socket: any = props.userSocket;
+    const socketRef: any = React.useRef();
 
-    const [isSubscribed, setIsSubscribe] = React.useState(false);
+    const [isSubscribed, setIsSubscribed] = React.useState(false);
+
+    const [isConnected, setIsConnected] = React.useState(false);
 
     // return Promise
     function playVideo(element: any, stream: any) {
@@ -54,11 +57,12 @@ function Subscribe(props: any) {
     // ============ UI button ==========
 
     async function handleSubscribe() {
-        // if (!isSocketConnected()) {
-        //   await connectSocket().catch(err => {
-        //     console.error(err);
-        //     return;
-        //   });
+        //if (!socketRef.current) {
+        await connectSocket().catch((err: any) => {
+            console.error(err);
+            return;
+        });
+        // }
 
         // --- get capabilities --
         const data = await sendRequest('getRouterRtpCapabilities', {});
@@ -106,6 +110,7 @@ function Subscribe(props: any) {
 
                 case 'connected':
                     console.log('subscribed');
+                    setIsSubscribed(true);
                     break;
 
                 case 'failed':
@@ -167,9 +172,10 @@ function Subscribe(props: any) {
             consumerTransport.current = null;
         }
 
-        // removeAllRemoteVideo();
+        removeAllRemoteVideo();
 
         disconnectSocket();
+        setIsSubscribed(false);
     }
 
     async function loadDevice(routerRtpCapabilities: any) {
@@ -222,7 +228,7 @@ function Subscribe(props: any) {
 
     function sendRequest(type: any, data: any) {
         return new Promise((resolve: any, reject: any) => {
-            socket.emit(type, data, (err: any, response: any) => {
+            socketRef.current.emit(type, data, (err: any, response: any) => {
                 if (!err) {
                     // Success response, so pass the mediasoup response to the local Room.
                     resolve(response);
@@ -233,87 +239,119 @@ function Subscribe(props: any) {
         });
     }
     function disconnectSocket() {
-        if (socket) {
-            socket.close();
-            socket = null;
+        if (socketRef.current) {
+            socketRef.current.close();
+            socketRef.current = null;
             clientId.current = null;
             console.log('socket.io closed..');
         }
     }
-    React.useEffect(() => {
-        socket.on('message', function (message: any) {
-            console.log('socket.io message:', message);
-            if (message.type === 'welcome') {
-                if (socket.id !== message.id) {
-                    console.warn(
-                        'WARN: something wrong with clientID',
-                        socket.io,
-                        message.id
-                    );
-                }
 
-                clientId.current = message.id;
-                console.log(
-                    'connected to server. clientId=' + clientId.current
-                );
-            } else {
-                console.error('UNKNOWN message from server:', message);
-            }
-        });
-        socket.on('newProducer', async function (message: any) {
-            console.log('socket.io newProducer:', message);
-            if (consumerTransport.current) {
-                // start consume
-                if (message.kind === 'video') {
-                    videoConsumer.current = await consumeAndResume(
-                        consumerTransport.current,
-                        message.kind
-                    );
-                } else if (message.kind === 'audio') {
-                    audioConsumer.current = await consumeAndResume(
-                        consumerTransport.current,
-                        message.kind
-                    );
-                }
-            }
-        });
-
-        socket.on('producerClosed', function (message: any) {
-            console.log('socket.io producerClosed:', message);
-            const localId = message.localId;
-            const remoteId = message.remoteId;
-            const kind = message.kind;
-            console.log(
-                '--try removeConsumer remoteId=' +
-                    remoteId +
-                    ', localId=' +
-                    localId +
-                    ', kind=' +
-                    kind
+    const connectSocket: any = () => {
+        if (socketRef.current == null) {
+            const io: any = socketIOClient(
+                config.SERVER_ENDPOINT + '/video-broadcast'
             );
-            if (kind === 'video') {
-                if (videoConsumer.current) {
-                    videoConsumer.current.close();
-                    videoConsumer.current = null;
-                }
-            } else if (kind === 'audio') {
-                if (audioConsumer.current) {
-                    audioConsumer.current.close();
-                    audioConsumer.current = null;
-                }
-            }
+            socketRef.current = io;
+        }
 
-            if (remoteId) {
-                // removeRemoteVideo(remoteId);
-            } else {
-                // removeAllRemoteVideo();
-            }
+        return new Promise((resolve: any, reject: any) => {
+            const socket = socketRef.current;
+            socket.on('connect', function (evt: any) {
+                console.log('socket.io connected()');
+            });
+            socket.on('error', function (err: any) {
+                console.error('socket.io ERROR:', err);
+                reject(err);
+            });
+            socket.on('message', function (message: any) {
+                console.log('socket.io message:', message);
+                if (message.type === 'welcome') {
+                    if (socket.id !== message.id) {
+                        console.warn(
+                            'WARN: something wrong with clientID',
+                            socket.io,
+                            message.id
+                        );
+                    }
+
+                    clientId.current = message.id;
+                    console.log(
+                        'connected to server. clientId=' + clientId.current
+                    );
+                    resolve();
+                } else {
+                    console.error('UNKNOWN message from server:', message);
+                }
+            });
+            socket.on('newProducer', async function (message: any) {
+                console.log('socket.io newProducer:', message);
+                if (consumerTransport.current) {
+                    // start consume
+                    if (message.kind === 'video') {
+                        videoConsumer.current = await consumeAndResume(
+                            consumerTransport.current,
+                            message.kind
+                        );
+                    } else if (message.kind === 'audio') {
+                        audioConsumer.current = await consumeAndResume(
+                            consumerTransport.current,
+                            message.kind
+                        );
+                    }
+                }
+            });
+
+            socket.on('producerClosed', function (message: any) {
+                console.log('socket.io producerClosed:', message);
+                const localId = message.localId;
+                const remoteId = message.remoteId;
+                const kind = message.kind;
+                console.log(
+                    '--try removeConsumer remoteId=' +
+                        remoteId +
+                        ', localId=' +
+                        localId +
+                        ', kind=' +
+                        kind
+                );
+                if (kind === 'video') {
+                    if (videoConsumer.current) {
+                        videoConsumer.current.close();
+                        videoConsumer.current = null;
+                    }
+                } else if (kind === 'audio') {
+                    if (audioConsumer.current) {
+                        audioConsumer.current.close();
+                        audioConsumer.current = null;
+                    }
+                }
+
+                if (remoteId) {
+                    removeRemoteVideo(remoteId);
+                } else {
+                    removeAllRemoteVideo();
+                }
+            });
         });
-    }, []);
+    };
+
+    function removeRemoteVideo(id: any) {
+        console.log(' ---- removeRemoteVideo() id=' + id);
+    }
+
+    function removeAllRemoteVideo() {
+        // remoteVideo.current = null;
+    }
+
     return (
         <div>
-            <button onClick={handleSubscribe}>Subscribe</button>
-            <button onClick={handleDisconnect}>Disconnect</button>
+            <button disabled={isSubscribed} onClick={handleSubscribe}>
+                Subscribe
+            </button>
+            <button disabled={!isSubscribed} onClick={handleDisconnect}>
+                Disconnect
+            </button>
 
             <div>
                 remote video
