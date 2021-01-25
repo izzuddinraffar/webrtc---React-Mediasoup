@@ -2,6 +2,16 @@ function socketMain(io) {
     const broadcastIO = io.of('/video-broadcast');
     broadcastIO.on('connection', (socket) => {
         console.log('broadcast');
+        socket.on('disconnect', function () {
+            // close user connection
+            console.log(
+                'client disconnected. socket id=' +
+                    getId(socket) +
+                    '  , total clients=' +
+                    getClientCount()
+            );
+            cleanUpPeer(socket);
+        });
 
         socket.on('getRouterRtpCapabilities', (data, callback) => {
             if (router) {
@@ -250,10 +260,13 @@ function socketMain(io) {
             return socket.id;
         }
 
-        function getClientCount() {
+        const getClientCount = async () => {
             // WARN: undocumented method to get clients number
-            return io.eio.clientsCount;
-        }
+
+            var nspSockets = await broadcastIO.allSockets();
+            console.log('nspSockets');
+            console.log(nspSockets);
+        };
 
         function cleanUpPeer(socket) {
             const id = getId(socket);
