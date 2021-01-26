@@ -35,6 +35,9 @@ const CreateRemoteVideos = (props: any) => {
 export const MemoizedCreateRemoteVideos = React.memo(CreateRemoteVideos);
 
 function MeetRoom(props: any) {
+    const localScreen: any = React.useRef();
+    const localStreamScreen: any = React.useRef();
+
     const localVideo: any = React.useRef();
     const localStream: any = React.useRef();
     const clientId: any = React.useRef();
@@ -54,6 +57,133 @@ function MeetRoom(props: any) {
     const [remoteVideos, setRemoteVideos]: any = React.useState({});
 
     // ============ UI button ==========
+
+    const handleStartScreenShare = () => {
+        if (localStreamScreen.current) {
+            console.warn('WARN: local media ALREADY started');
+            return;
+        }
+
+        const mediaDevices: any = navigator.mediaDevices;
+        mediaDevices
+            .getDisplayMedia({ audio: useAudio, video: useVideo })
+            .then((stream: any) => {
+                localStreamScreen.current = stream;
+
+                playVideo(localScreen.current, localStreamScreen.current);
+                handleConnectScreenShare();
+            })
+            .catch((err: any) => {
+                console.error('media ERROR:', err);
+            });
+    };
+
+    async function handleConnectScreenShare() {
+        if (!localStreamScreen.current) {
+            console.warn('WARN: local media NOT READY');
+            return;
+        }
+
+        // // --- connect socket.io ---
+        // await connectSocket().catch((err: any) => {
+        //     console.error(err);
+        //     return;
+        // });
+
+        // console.log('connected');
+
+        // --- get capabilities --
+        const data = await sendRequest('getRouterRtpCapabilities', {});
+        console.log('getRouterRtpCapabilities:', data);
+        await loadDevice(data);
+
+        // --- get transport info ---
+        console.log('--- createProducerTransport --');
+        const params = await sendRequest('createProducerTransport', {
+            mode: 'screen_share',
+        });
+        console.log('transport params:', params);
+        producerTransport.current = device.current.createSendTransport(params);
+        console.log('createSendTransport:', producerTransport.current);
+
+        // --- join & start publish --
+        producerTransport.current.on(
+            'connect',
+            async ({ dtlsParameters }: any, callback: any, errback: any) => {
+                console.log('--trasnport connect');
+                sendRequest('connectProducerTransport', {
+                    dtlsParameters: dtlsParameters,
+                })
+                    .then(callback)
+                    .catch(errback);
+            }
+        );
+
+        producerTransport.current.on(
+            'produce',
+            async (
+                { kind, rtpParameters }: any,
+                callback: any,
+                errback: any
+            ) => {
+                console.log('--trasnport produce');
+                try {
+                    const { id }: any = await sendRequest('produce', {
+                        transportId: producerTransport.current.id,
+                        kind,
+                        rtpParameters,
+                        mode: 'screen_share',
+                    });
+                    callback({ id });
+                    console.log('--produce requested, then subscribe ---');
+                    subscribe();
+                } catch (err) {
+                    errback(err);
+                }
+            }
+        );
+
+        producerTransport.current.on('connectionstatechange', (state: any) => {
+            switch (state) {
+                case 'connecting':
+                    console.log('publishing...');
+                    break;
+
+                case 'connected':
+                    console.log('published');
+                    //  setIsConnected(true);
+                    break;
+
+                case 'failed':
+                    console.log('failed');
+                    producerTransport.current.close();
+                    break;
+
+                default:
+                    break;
+            }
+        });
+
+        if (useVideo) {
+            const videoTrack = localStreamScreen.current.getVideoTracks()[0];
+            if (videoTrack) {
+                const trackParams = { track: videoTrack };
+                videoProducer.current = await producerTransport.current.produce(
+                    trackParams
+                );
+            }
+        }
+        if (useAudio) {
+            const audioTrack = localStreamScreen.current.getAudioTracks()[0];
+            if (audioTrack) {
+                const trackParams = { track: audioTrack };
+                audioProducer.current = await producerTransport.current.produce(
+                    trackParams
+                );
+            }
+        }
+    }
+
     const handleUseVideo = (e: any) => {
         setUseVideo(!useVideo);
     };
@@ -74,7 +204,7 @@ function MeetRoom(props: any) {
                 playVideo(localVideo.current, localStream.current);
                 setIsStartMedia(true);
             })
-            .catch((err) => {
+            .catch((err: any) => {
                 console.error('media ERROR:', err);
             });
     };
@@ -155,7 +285,7 @@ function MeetRoom(props: any) {
         tracks.forEach((track: any) => track.stop());
     }
 
-    function addRemoteTrack(id: any, track: any) {
+    function addRemoteTrack(id: any, track: any, mode: string) {
         // let video: any = findRemoteVideo(id);
         // if (!video) {
         //     video = addRemoteVideo(id);
@@ -176,7 +306,10 @@ function MeetRoom(props: any) {
 
         setRemoteVideos((peers: any) => {
             const newPeers: any = peers;
-            newPeers[id] = {
+            if (newPeers[id] == undefined) {
+                newPeers[id] = {};
+            }
+            newPeers[id][mode] = {
                 stream: newStream,
                 socket_id: id,
             };
@@ -243,7 +376,8 @@ function MeetRoom(props: any) {
         transport: any,
         remoteSocketId: any,
         prdId: any,
-        trackKind: any
+        trackKind: any,
+        mode: any = 'stream'
     ) {
         console.log('--start of consumeAdd -- kind=%s', trackKind);
         const { rtpCapabilities } = device.current;
@@ -252,6 +386,7 @@ function MeetRoom(props: any) {
             rtpCapabilities: rtpCapabilities,
             remoteId: remoteSocketId,
             kind: trackKind,
+            mode: mode,
         }).catch((err) => {
             console.error('consumeAdd ERROR:', err);
         });
@@ -267,11 +402,12 @@ function MeetRoom(props: any) {
             kind,
             rtpParameters,
             codecOptions,
+            mode,
         });
         //const stream = new MediaStream();
         //stream.addTrack(consumer.track);
 
-        addRemoteTrack(remoteSocketId, consumer.track);
+        addRemoteTrack(remoteSocketId, consumer.track, mode);
         addConsumer(remoteSocketId, consumer, kind);
         consumer.remoteId = remoteSocketId;
         consumer.on('transportclose', () => {
@@ -333,7 +469,9 @@ function MeetRoom(props: any) {
 
         // --- get transport info ---
         console.log('--- createProducerTransport --');
-        const params = await sendRequest('createProducerTransport', {});
+        const params = await sendRequest('createProducerTransport', {
+            mode: 'stream',
+        });
         console.log('transport params:', params);
         producerTransport.current = device.current.createSendTransport(params);
         console.log('createSendTransport:', producerTransport.current);
@@ -364,6 +502,7 @@ function MeetRoom(props: any) {
                         transportId: producerTransport.current.id,
                         kind,
                         rtpParameters,
+                        mode: 'stream',
                     });
                     callback({ id });
                     console.log('--produce requested, then subscribe ---');
@@ -534,10 +673,10 @@ function MeetRoom(props: any) {
     ) {
         console.log('----- consumeAll() -----');
         remoteVideoIds.forEach((rId: any) => {
-            consumeAdd(transport, rId, null, 'video');
+            consumeAdd(transport, rId, null, 'video', 'stream');
         });
         remotAudioIds.forEach((rId: any) => {
-            consumeAdd(transport, rId, null, 'audio');
+            consumeAdd(transport, rId, null, 'audio', 'stream');
         });
     }
 
@@ -639,6 +778,8 @@ function MeetRoom(props: any) {
                 const remoteId = message.socketId;
                 const prdId = message.producerId;
                 const kind = message.kind;
+                const mode = message.mode;
+
                 if (kind === 'video') {
                     console.log(
                         '--try consumeAdd remoteId=' +
@@ -652,7 +793,8 @@ function MeetRoom(props: any) {
                         consumerTransport.current,
                         remoteId,
                         prdId,
-                        kind
+                        kind,
+                        mode
                     );
                 } else if (kind === 'audio') {
                     //console.warn('-- audio NOT SUPPORTED YET. skip remoteId=' + remoteId + ', prdId=' + prdId + ', kind=' + kind);
@@ -668,7 +810,8 @@ function MeetRoom(props: any) {
                         consumerTransport.current,
                         remoteId,
                         prdId,
-                        kind
+                        kind,
+                        mode
                     );
                 }
             });
@@ -737,6 +880,7 @@ function MeetRoom(props: any) {
             >
                 Disconnect
             </button>
+            <button onClick={handleStartScreenShare}>Start Screen</button>
             <div>
                 local video
                 <video
@@ -748,16 +892,31 @@ function MeetRoom(props: any) {
                         border: '1px solid black',
                     }}
                 ></video>
+                <video
+                    ref={localScreen}
+                    autoPlay
+                    style={{
+                        width: '240px',
+                        height: '180px',
+                        border: '1px solid black',
+                    }}
+                ></video>
             </div>
             <div>remote videos</div>
+            {console.log(remoteVideos)}
             {Object.keys(remoteVideos).map((key: any, index: number) => {
-                const peer: any = remoteVideos[key];
-                return (
-                    <MemoizedCreateRemoteVideos
-                        key={peer.socket_id}
-                        peer={peer}
-                        playVideo={playVideo}
-                    />
+                return Object.keys(remoteVideos[key]).map(
+                    (key2: any, index2: number) => {
+                        const peer: any = remoteVideos[key][key2];
+
+                        return (
+                            <MemoizedCreateRemoteVideos
+                                key={peer.socket_id + '__' + key2}
+                                peer={peer}
+                                playVideo={playVideo}
+                            />
+                        );
+                    }
                 );
             })}
         </div>
