@@ -342,6 +342,10 @@ function Subscribe(props: any) {
 
     function removeAllRemoteVideo() {
         // remoteVideo.current = null;
+        if (remoteVideo.current) {
+            remoteVideo.current.pause();
+            remoteVideo.current.srcObject = null;
+        }
     }
 
     return (
