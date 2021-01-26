@@ -4,13 +4,13 @@ function socketMain(io) {
         //console.log('conference');
 
         socket.on('disconnect', function () {
-            // close user connection
-            //console.log(
-            //     'client disconnected. socket id=' +
-            //         getId(socket) +
-            //         '  , total clients=' +
-            //         getClientCount()
-            // );
+            //   close user connection
+            console.log(
+                'client disconnected. socket id=' +
+                    getId(socket) +
+                    '  , total clients=' +
+                    getClientCount()
+            );
             cleanUpPeer(socket);
         });
 
@@ -275,15 +275,33 @@ function socketMain(io) {
                 removeConsumerTransport(id);
             }
 
-            const videoProducer = getProducer(id, 'video');
-            if (videoProducer) {
-                videoProducer.close();
-                removeProducer(id, 'video');
+            {
+                const videoProducer = getProducer(id, 'video', 'stream');
+                if (videoProducer) {
+                    videoProducer.close();
+                    removeProducer(id, 'video');
+                }
             }
-            const audioProducer = getProducer(id, 'audio');
-            if (audioProducer) {
-                audioProducer.close();
-                removeProducer(id, 'audio');
+            {
+                const videoProducer = getProducer(id, 'video', 'screen_share');
+                if (videoProducer) {
+                    videoProducer.close();
+                    removeProducer(id, 'video');
+                }
+            }
+            {
+                const audioProducer = getProducer(id, 'audio', 'stream');
+                if (audioProducer) {
+                    audioProducer.close();
+                    removeProducer(id, 'audio');
+                }
+            }
+            {
+                const audioProducer = getProducer(id, 'audio', 'screen_share');
+                if (audioProducer) {
+                    audioProducer.close();
+                    removeProducer(id, 'audio');
+                }
             }
 
             const producerTransport = getProducerTrasnport(id);
@@ -452,12 +470,18 @@ function socketMain(io) {
 
     function removeProducer(id, kind) {
         if (kind === 'video') {
-            delete videoProducers[id];
+            if (videoProducers[id]) {
+                delete videoProducers[id];
+            }
+
             //console.log(
             //     'videoProducers count=' + Object.keys(videoProducers).length
             // );
         } else if (kind === 'audio') {
-            delete audioProducers[id];
+            if (audioProducers[id]) {
+                delete audioProducers[id];
+            }
+
             //console.log(
             //     'audioProducers count=' + Object.keys(audioProducers).length
             // );

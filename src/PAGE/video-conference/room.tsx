@@ -224,6 +224,11 @@ function MeetRoom(props: any) {
             stopLocalStream(localStream.current);
             localStream.current = null;
         }
+        if (localStreamScreen.current) {
+            pauseVideo(localScreen.current);
+            stopLocalStream(localStreamScreen.current);
+            localStreamScreen.current = null;
+        }
         if (videoProducer.current) {
             videoProducer.current.close(); // localStream will stop
             videoProducer.current = null;
@@ -880,7 +885,12 @@ function MeetRoom(props: any) {
             >
                 Disconnect
             </button>
-            <button onClick={handleStartScreenShare}>Start Screen</button>
+            <button
+                disabled={!isStartMedia || !isConnected}
+                onClick={handleStartScreenShare}
+            >
+                Start Screen
+            </button>
             <div>
                 local video
                 <video
