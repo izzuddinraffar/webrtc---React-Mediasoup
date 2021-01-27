@@ -170,7 +170,8 @@ function socketMain(io) {
                 console.error(
                     'producer NOT EXIST for remoteId=%s kind=%s',
                     remoteId,
-                    kind
+                    kind,
+                    mode
                 );
                 return;
             }
@@ -225,6 +226,23 @@ function socketMain(io) {
             }
             await consumer.resume();
             sendResponse({}, callback);
+        });
+
+        socket.on('stopScreenScreen', async (data) => {
+            const localId = getId(socket);
+
+            const videoProducer = getProducer(id, 'video', 'share_screen');
+            if (videoProducer) {
+                videoProducer.close();
+                delete videoProducer[localId]['share_screen'];
+            }
+
+            const audioProducer = getProducer(id, 'audio', 'share_screen');
+            if (audioProducer) {
+                audioProducer.close();
+                removeProducer(id, 'audio');
+                delete audioProducer[localId]['share_screen'];
+            }
         });
 
         // ---- sendback welcome message with on connected ---
@@ -283,7 +301,7 @@ function socketMain(io) {
                 }
             }
             {
-                const videoProducer = getProducer(id, 'video', 'screen_share');
+                const videoProducer = getProducer(id, 'video', 'share_screen');
                 if (videoProducer) {
                     videoProducer.close();
                     removeProducer(id, 'video');
@@ -297,7 +315,7 @@ function socketMain(io) {
                 }
             }
             {
-                const audioProducer = getProducer(id, 'audio', 'screen_share');
+                const audioProducer = getProducer(id, 'audio', 'share_screen');
                 if (audioProducer) {
                     audioProducer.close();
                     removeProducer(id, 'audio');
