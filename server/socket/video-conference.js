@@ -1,7 +1,14 @@
+function consoleLog(data) {
+    //console.log(data);
+}
+
 function socketMain(io) {
     const conferenceIO = io.of('/video-conference');
+    const MODE_STREAM = 'stream';
+    const MODE_SHARE_SCREEN = 'share_screen';
+
     conferenceIO.on('connection', (socket) => {
-        //console.log('conference');
+        consoleLog('conference');
 
         socket.on('disconnect', function () {
             //   close user connection
@@ -16,10 +23,10 @@ function socketMain(io) {
 
         socket.on('getRouterRtpCapabilities', (data, callback) => {
             if (router) {
-                //console.log(
-                //     'getRouterRtpCapabilities: ',
-                //     router.rtpCapabilities
-                // );
+                consoleLog(
+                    'getRouterRtpCapabilities: ',
+                    router.rtpCapabilities
+                );
                 sendResponse(router.rtpCapabilities, callback);
             } else {
                 sendReject({ text: 'ERROR- router NOT READY' }, callback);
@@ -28,7 +35,7 @@ function socketMain(io) {
 
         // --- producer ----
         socket.on('createProducerTransport', async (data, callback) => {
-            //console.log('-- createProducerTransport ---');
+            consoleLog('-- createProducerTransport ---');
             const mode = data.mode;
 
             const { transport, params } = await createTransport();
@@ -47,7 +54,7 @@ function socketMain(io) {
                 }
                 removeProducerTransport(id);
             });
-            ////console.log('-- createProducerTransport params:', params);
+            //consoleLog('-- createProducerTransport params:', params);
             sendResponse(params, callback);
         });
 
@@ -59,7 +66,7 @@ function socketMain(io) {
 
         socket.on('produce', async (data, callback) => {
             const { kind, rtpParameters, mode } = data;
-            //console.log('-- produce --- kind=' + kind);
+            consoleLog('-- produce --- kind=' + kind);
 
             const id = getId(socket);
             const transport = getProducerTrasnport(id);
@@ -70,12 +77,12 @@ function socketMain(io) {
             const producer = await transport.produce({ kind, rtpParameters });
             addProducer(id, producer, kind, mode);
             producer.observer.on('close', () => {
-                //console.log('producer closed --- kind=' + kind);
+                consoleLog('producer closed --- kind=' + kind);
             });
             sendResponse({ id: producer.id }, callback);
 
             // inform clients about new producer
-            //console.log('--broadcast newProducer ---');
+            consoleLog('--broadcast newProducer ---');
             socket.broadcast.emit('newProducer', {
                 socketId: id,
                 producerId: producer.id,
@@ -86,13 +93,13 @@ function socketMain(io) {
 
         // --- consumer ----
         socket.on('createConsumerTransport', async (data, callback) => {
-            //console.log('-- createConsumerTransport -- id=' + getId(socket));
+            consoleLog('-- createConsumerTransport -- id=' + getId(socket));
             const { transport, params } = await createTransport();
             addConsumerTrasport(getId(socket), transport);
             transport.observer.on('close', () => {
                 const localId = getId(socket);
-                removeConsumerSetDeep(localId, 'stream');
-                removeConsumerSetDeep(localId, 'share_screen');
+                removeConsumerSetDeep(localId, MODE_STREAM);
+                removeConsumerSetDeep(localId, MODE_SHARE_SCREEN);
                 /*
               let consumer = getConsumer(getId(socket));
               if (consumer) {
@@ -102,12 +109,12 @@ function socketMain(io) {
               */
                 removeConsumerTransport(id);
             });
-            ////console.log('-- createTransport params:', params);
+            //consoleLog('-- createTransport params:', params);
             sendResponse(params, callback);
         });
 
         socket.on('connectConsumerTransport', async (data, callback) => {
-            //console.log('-- connectConsumerTransport -- id=' + getId(socket));
+            consoleLog('-- connectConsumerTransport -- id=' + getId(socket));
             let transport = getConsumerTrasnport(getId(socket));
             if (!transport) {
                 console.error('transport NOT EXIST for id=' + getId(socket));
@@ -129,12 +136,12 @@ function socketMain(io) {
 
         socket.on('getCurrentProducers', async (data, callback) => {
             const clientId = data.localId;
-            //console.log('-- getCurrentProducers for Id=' + clientId);
+            consoleLog('-- getCurrentProducers for Id=' + clientId);
 
             const remoteVideoIds = getRemoteIds(clientId, 'video');
-            //console.log('-- remoteVideoIds:', remoteVideoIds);
+            consoleLog('-- remoteVideoIds:', remoteVideoIds);
             const remoteAudioIds = getRemoteIds(clientId, 'audio');
-            //console.log('-- remoteAudioIds:', remoteAudioIds);
+            consoleLog('-- remoteAudioIds:', remoteAudioIds);
 
             sendResponse(
                 {
@@ -149,7 +156,7 @@ function socketMain(io) {
             const localId = getId(socket);
             const kind = data.kind;
             const mode = data.mode;
-            //console.log('-- consumeAdd -- localId=%s kind=%s', localId, kind);
+            consoleLog('-- consumeAdd -- localId=%s kind=%s', localId, kind);
 
             let transport = getConsumerTrasnport(localId);
             if (!transport) {
@@ -158,14 +165,14 @@ function socketMain(io) {
             }
             const rtpCapabilities = data.rtpCapabilities;
             const remoteId = data.remoteId;
-            //console.log(
-            //     '-- consumeAdd - localId=' +
-            //         localId +
-            //         ' remoteId=' +
-            //         remoteId +
-            //         ' kind=' +
-            //         kind
-            // );
+            consoleLog(
+                '-- consumeAdd - localId=' +
+                    localId +
+                    ' remoteId=' +
+                    remoteId +
+                    ' kind=' +
+                    kind
+            );
             const producer = getProducer(remoteId, kind, mode);
             if (!producer) {
                 console.error(
@@ -184,17 +191,17 @@ function socketMain(io) {
             ); // producer must exist before consume
             //subscribeConsumer = consumer;
             addConsumer(localId, remoteId, consumer, kind, mode); // TODO: MUST comination of  local/remote id
-            //console.log(
-            //     'addConsumer localId=%s, remoteId=%s, kind=%s',
-            //     localId,
-            //     remoteId,
-            //     kind
-            // );
+            consoleLog(
+                'addConsumer localId=%s, remoteId=%s, kind=%s',
+                localId,
+                remoteId,
+                kind
+            );
             consumer.observer.on('close', () => {
-                //console.log('consumer closed ---');
+                consoleLog('consumer closed ---');
             });
             consumer.on('producerclose', () => {
-                //console.log('consumer -- on.producerclose');
+                consoleLog('consumer -- on.producerclose');
                 consumer.close();
                 removeConsumer(localId, remoteId, kind, mode);
 
@@ -207,7 +214,7 @@ function socketMain(io) {
                 });
             });
 
-            //console.log('-- consumer ready ---');
+            consoleLog('-- consumer ready ---');
             sendResponse(params, callback);
         });
 
@@ -216,12 +223,12 @@ function socketMain(io) {
             const remoteId = data.remoteId;
             const kind = data.kind;
             const mode = data.mode;
-            //console.log(
-            //     '-- resumeAdd localId=%s remoteId=%s kind=%s',
-            //     localId,
-            //     remoteId,
-            //     kind
-            // );
+            consoleLog(
+                '-- resumeAdd localId=%s remoteId=%s kind=%s',
+                localId,
+                remoteId,
+                kind
+            );
             let consumer = getConsumer(localId, remoteId, kind, mode);
             if (!consumer) {
                 console.error('consumer NOT EXIST for remoteId=' + remoteId);
@@ -234,22 +241,35 @@ function socketMain(io) {
         socket.on('producerStopShareScreen', async (data, callback) => {
             const id = getId(socket);
 
-            // const videoProducer = getProducer(id, 'video', 'share_screen');
-            // if (videoProducer) {
-            //     videoProducer.close();
-            //     delete videoProducer[id]['share_screen'];
-            // }
+            removeConsumerSetDeep(id, MODE_SHARE_SCREEN);
 
-            // const audioProducer = getProducer(id, 'audio', 'share_screen');
-            // if (audioProducer) {
-            //     audioProducer.close();
+            {
+                const videoProducer = getProducer(
+                    id,
+                    'video',
+                    MODE_SHARE_SCREEN
+                );
+                if (videoProducer) {
+                    videoProducer.close();
+                    removeProducer(id, 'video', MODE_SHARE_SCREEN);
+                }
+            }
 
-            //     delete audioProducer[id]['share_screen'];
-            // }
-            // sendResponse(id, callback);
-            socket.broadcast.emit('shareScreenClosed', {
-                callerID: id,
-            });
+            {
+                const audioProducer = getProducer(
+                    id,
+                    'audio',
+                    MODE_SHARE_SCREEN
+                );
+                if (audioProducer) {
+                    audioProducer.close();
+                    removeProducer(id, 'audio', MODE_SHARE_SCREEN);
+                }
+            }
+
+            // socket.broadcast.emit('shareScreenClosed', {
+            //     callerID: id,
+            // });
         });
 
         // ---- sendback welcome message with on connected ---
@@ -258,7 +278,7 @@ function socketMain(io) {
 
         // --- send response to client ---
         function sendResponse(response, callback) {
-            ////console.log('sendResponse() callback:', callback);
+            //consoleLog('sendResponse() callback:', callback);
             callback(null, response);
         }
 
@@ -279,14 +299,14 @@ function socketMain(io) {
             // WARN: undocumented method to get clients number
 
             var nspSockets = await conferenceIO.allSockets();
-            //console.log('nspSockets');
-            //console.log(nspSockets);
+            consoleLog('nspSockets');
+            consoleLog(nspSockets);
         };
 
         function cleanUpPeer(socket) {
             const id = getId(socket);
-            removeConsumerSetDeep(id, 'stream');
-            removeConsumerSetDeep(id, 'share_screen');
+            removeConsumerSetDeep(id, MODE_STREAM);
+            removeConsumerSetDeep(id, MODE_SHARE_SCREEN);
             /*
             const consumer = getConsumer(id);
             if (consumer) {
@@ -302,31 +322,39 @@ function socketMain(io) {
             }
 
             {
-                const videoProducer = getProducer(id, 'video', 'stream');
+                const videoProducer = getProducer(id, 'video', MODE_STREAM);
                 if (videoProducer) {
                     videoProducer.close();
-                    removeProducer(id, 'video', 'stream');
+                    removeProducer(id, 'video', MODE_STREAM);
                 }
             }
             {
-                const videoProducer = getProducer(id, 'video', 'share_screen');
+                const videoProducer = getProducer(
+                    id,
+                    'video',
+                    MODE_SHARE_SCREEN
+                );
                 if (videoProducer) {
                     videoProducer.close();
-                    removeProducer(id, 'video', 'share_screen');
+                    removeProducer(id, 'video', MODE_SHARE_SCREEN);
                 }
             }
             {
-                const audioProducer = getProducer(id, 'audio', 'stream');
+                const audioProducer = getProducer(id, 'audio', MODE_STREAM);
                 if (audioProducer) {
                     audioProducer.close();
-                    removeProducer(id, 'audio', 'stream');
+                    removeProducer(id, 'audio', MODE_STREAM);
                 }
             }
             {
-                const audioProducer = getProducer(id, 'audio', 'share_screen');
+                const audioProducer = getProducer(
+                    id,
+                    'audio',
+                    MODE_SHARE_SCREEN
+                );
                 if (audioProducer) {
                     audioProducer.close();
-                    removeProducer(id, 'audio', 'share_screen');
+                    removeProducer(id, 'audio', MODE_SHARE_SCREEN);
                 }
             }
 
@@ -404,7 +432,7 @@ function socketMain(io) {
         worker = await mediasoup.createWorker();
         router = await worker.createRouter({ mediaCodecs });
         //producerTransport = await router.createWebRtcTransport(mediasoupOptions.webRtcTransport);
-        //console.log('-- mediasoup worker start. --');
+        consoleLog('-- mediasoup worker start. --');
     }
 
     startWorker();
@@ -429,16 +457,16 @@ function socketMain(io) {
 
     function addProducerTrasport(id, transport) {
         producerTransports[id] = transport;
-        //console.log(
-        //     'producerTransports count=' + Object.keys(producerTransports).length
-        // );
+        consoleLog(
+            'producerTransports count=' + Object.keys(producerTransports).length
+        );
     }
 
     function removeProducerTransport(id) {
         delete producerTransports[id];
-        //console.log(
-        //     'producerTransports count=' + Object.keys(producerTransports).length
-        // );
+        consoleLog(
+            'producerTransports count=' + Object.keys(producerTransports).length
+        );
     }
 
     function getProducer(id, kind, mode) {
@@ -481,20 +509,20 @@ function socketMain(io) {
                 videoProducers[id] = {};
             }
             videoProducers[id][mode] = producer;
-            console.log('addProducer');
-            console.log(mode);
-            console.log(videoProducers);
-            //console.log(
-            //     'videoProducers count=' + Object.keys(videoProducers).length
-            // );
+            consoleLog('addProducer');
+
+            consoleLog(videoProducers);
+            consoleLog(
+                'videoProducers count=' + Object.keys(videoProducers).length
+            );
         } else if (kind === 'audio') {
             if (audioProducers[id] == undefined) {
                 audioProducers[id] = {};
             }
             audioProducers[id][mode] = producer;
-            //console.log(
-            //     'audioProducers count=' + Object.keys(audioProducers).length
-            // );
+            consoleLog(
+                'audioProducers count=' + Object.keys(audioProducers).length
+            );
         } else {
             console.warn('UNKNOWN producer kind=' + kind);
         }
@@ -505,8 +533,10 @@ function socketMain(io) {
             return false;
         }
         if (kind === 'video') {
-            if (videoProducers[id]) {
-                if (videoProducers[id][mode]) {
+            if (videoProducers[id] && videoProducers[id][mode]) {
+                if (mode == MODE_STREAM) {
+                    delete videoProducers[id];
+                } else {
                     delete videoProducers[id][mode];
                 }
             }
@@ -515,11 +545,17 @@ function socketMain(io) {
                 'videoProducers count=' + Object.keys(videoProducers).length
             );
         } else if (kind === 'audio') {
-            if (audioProducers[id]) {
-                if (audioProducers[id][mode]) {
+            if (audioProducers[id] && audioProducers[id][mode]) {
+                if (mode == MODE_STREAM) {
+                    delete audioProducers[id];
+                } else {
                     delete audioProducers[id][mode];
                 }
             }
+            console.log(audioProducers);
+            console.log(
+                'audioProducers count=' + Object.keys(audioProducers).length
+            );
 
             // console.log(
             //     'audioProducers count=' + Object.keys(audioProducers).length
@@ -540,16 +576,16 @@ function socketMain(io) {
 
     function addConsumerTrasport(id, transport) {
         consumerTransports[id] = transport;
-        //console.log(
-        //     'consumerTransports count=' + Object.keys(consumerTransports).length
-        // );
+        consoleLog(
+            'consumerTransports count=' + Object.keys(consumerTransports).length
+        );
     }
 
     function removeConsumerTransport(id) {
         delete consumerTransports[id];
-        //console.log(
-        //     'consumerTransports count=' + Object.keys(consumerTransports).length
-        // );
+        consoleLog(
+            'consumerTransports count=' + Object.keys(consumerTransports).length
+        );
     }
 
     function getConsumerSet(localId, kind, mode) {
@@ -583,21 +619,21 @@ function socketMain(io) {
         const set = getConsumerSet(localId, kind, mode);
         if (set) {
             set[remoteId] = consumer;
-            //console.log(
-            //     'consumers kind=%s count=%d',
-            //     kind,
-            //     Object.keys(set).length
-            // );
+            consoleLog(
+                'consumers kind=%s count=%d',
+                kind,
+                Object.keys(set).length
+            );
         } else {
-            //console.log('new set for kind=%s, localId=%s', kind, localId);
+            consoleLog('new set for kind=%s, localId=%s', kind, localId);
             const newSet = {};
             newSet[remoteId] = consumer;
             addConsumerSet(localId, newSet, kind, mode);
-            //console.log(
-            //     'consumers kind=%s count=%d',
-            //     kind,
-            //     Object.keys(newSet).length
-            // );
+            consoleLog(
+                'consumers kind=%s count=%d',
+                kind,
+                Object.keys(newSet).length
+            );
         }
     }
 
@@ -607,14 +643,19 @@ function socketMain(io) {
         }
         const set = getConsumerSet(localId, kind, mode);
         if (set) {
-            delete set[remoteId];
-            //console.log(
-            //     'consumers kind=%s count=%d',
-            //     kind,
-            //     Object.keys(set).length
-            // );
+            if (mode == MODE_STREAM) {
+                delete set[remoteId];
+            } else {
+                delete set[remoteId][mode];
+            }
+
+            consoleLog(
+                'consumers kind=%s count=%d',
+                kind,
+                Object.keys(set).length
+            );
         } else {
-            //console.log('NO set for kind=%s, localId=%s', kind, localId);
+            consoleLog('NO set for kind=%s, localId=%s', kind, localId);
         }
     }
 
@@ -624,38 +665,46 @@ function socketMain(io) {
         }
         const set = getConsumerSet(localId, 'video', mode);
         if (videoConsumers[localId] && videoConsumers[localId][mode]) {
-            delete videoConsumers[localId][mode];
+            if (mode == MODE_STREAM) {
+                delete videoConsumers[localId];
+            } else {
+                delete videoConsumers[localId][mode];
+            }
         }
 
         if (set) {
             for (const key in set) {
                 const consumer = set[key];
-                consumer.close();
+                consumer?.close();
                 delete set[key];
             }
 
-            //console.log(
-            //     'removeConsumerSetDeep video consumers count=' +
-            //         Object.keys(set).length
-            // );
+            consoleLog(
+                'removeConsumerSetDeep video consumers count=' +
+                    Object.keys(set).length
+            );
         }
 
         const audioSet = getConsumerSet(localId, 'audio', mode);
 
         if (audioConsumers[localId] && audioConsumers[localId][mode]) {
-            delete audioConsumers[localId][mode];
+            if (mode == MODE_STREAM) {
+                delete audioConsumers[localId];
+            } else {
+                delete audioConsumers[localId][mode];
+            }
         }
         if (audioSet) {
             for (const key in audioSet) {
                 const consumer = audioSet[key];
-                consumer.close();
+                consumer?.close();
                 delete audioSet[key];
             }
 
-            //console.log(
-            //     'removeConsumerSetDeep audio consumers count=' +
-            //         Object.keys(audioSet).length
-            // );
+            consoleLog(
+                'removeConsumerSetDeep audio consumers count=' +
+                    Object.keys(audioSet).length
+            );
         }
     }
 
@@ -679,7 +728,7 @@ function socketMain(io) {
         const transport = await router.createWebRtcTransport(
             mediasoupOptions.webRtcTransport
         );
-        //console.log('-- create transport id=' + transport.id);
+        consoleLog('-- create transport id=' + transport.id);
 
         return {
             transport: transport,
