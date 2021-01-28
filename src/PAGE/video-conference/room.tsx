@@ -13,7 +13,7 @@ const CreateRemoteVideos = (props: any) => {
         console.log(props);
         props
             .playVideo(remoteVideo.current, props.peer.stream)
-            .then(() => {
+            ?.then(() => {
                 remoteVideo.current.volume = 1.0;
             })
             .catch((err: any) => {
@@ -43,8 +43,8 @@ function MeetRoom(props: any) {
     const clientId: any = React.useRef();
     const device: any = React.useRef();
     const producerTransport: any = React.useRef();
-    const videoProducer: any = React.useRef();
-    const audioProducer: any = React.useRef();
+    const videoProducer: any = React.useRef({});
+    const audioProducer: any = React.useRef({});
     const consumerTransport: any = React.useRef();
     const videoConsumers: any = React.useRef({});
     const audioConsumers: any = React.useRef({});
@@ -75,8 +75,9 @@ function MeetRoom(props: any) {
                 playVideo(localScreen.current, localStreamScreen.current);
                 handleConnectScreenShare();
                 setIsShareScreen(true);
-                localStreamScreen.current.onended = function () {
-                    handleStopScreenShare();
+                const screenTrack = stream.getTracks()[0];
+                screenTrack.onended = function () {
+                    handleDisconnectScreenShare();
                 };
             })
             .catch((err: any) => {
@@ -174,18 +175,18 @@ function MeetRoom(props: any) {
             const videoTrack = localStreamScreen.current.getVideoTracks()[0];
             if (videoTrack) {
                 const trackParams = { track: videoTrack };
-                videoProducer.current = await producerTransport.current.produce(
-                    trackParams
-                );
+                videoProducer.current[
+                    'share_screen'
+                ] = await producerTransport.current.produce(trackParams);
             }
         }
         if (useAudio) {
             const audioTrack = localStreamScreen.current.getAudioTracks()[0];
             if (audioTrack) {
                 const trackParams = { track: audioTrack };
-                audioProducer.current = await producerTransport.current.produce(
-                    trackParams
-                );
+                audioProducer.current[
+                    'share_screen'
+                ] = await producerTransport.current.produce(trackParams);
             }
         }
     }
@@ -197,6 +198,21 @@ function MeetRoom(props: any) {
             localStreamScreen.current = null;
             setIsShareScreen(false);
         }
+    }
+    async function handleDisconnectScreenShare() {
+        handleStopScreenShare();
+        {
+            const producer = videoProducer.current['share_screen'];
+            producer?.close();
+            delete videoProducer.current['share_screen'];
+        }
+        {
+            const producer = audioProducer.current['share_screen'];
+            producer?.close();
+            delete audioProducer.current['share_screen'];
+        }
+
+        await sendRequest('producerStopShareScreen', {});
     }
 
     const handleUseVideo = (e: any) => {
@@ -234,24 +250,30 @@ function MeetRoom(props: any) {
     }
 
     function handleDisconnect() {
-        if (localStream.current) {
-            pauseVideo(localVideo.current);
-            stopLocalStream(localStream.current);
-            localStream.current = null;
+        handleStopMedia();
+        handleStopScreenShare();
+        // if (videoProducer.current) {
+        //     videoProducer.current.close(); // localStream will stop
+        //     videoProducer.current = null;
+        // }
+        {
+            for (const mode in videoProducer.current) {
+                const producer = videoProducer.current[mode];
+                producer?.close();
+                delete videoProducer.current[mode];
+            }
         }
-        if (localStreamScreen.current) {
-            pauseVideo(localScreen.current);
-            stopLocalStream(localStreamScreen.current);
-            localStreamScreen.current = null;
+        {
+            for (const mode in audioProducer.current) {
+                const producer = audioProducer.current[mode];
+                producer?.close();
+                delete audioProducer.current[mode];
+            }
         }
-        if (videoProducer.current) {
-            videoProducer.current.close(); // localStream will stop
-            videoProducer.current = null;
-        }
-        if (audioProducer.current) {
-            audioProducer.current.close(); // localStream will stop
-            audioProducer.current = null;
-        }
+        // if (audioProducer.current) {
+        //     audioProducer.current.close(); // localStream will stop
+        //     audioProducer.current = null;
+        // }
         if (producerTransport.current) {
             producerTransport.current.close(); // localStream will stop
             producerTransport.current = null;
@@ -261,14 +283,14 @@ function MeetRoom(props: any) {
             for (const key2 in videoConsumers.current[key]) {
                 const consumer = videoConsumers.current[key][key2];
                 consumer.close();
-                delete videoConsumers.current[key];
+                delete videoConsumers.current[key][key2];
             }
         }
         for (const key in audioConsumers.current) {
             for (const key2 in audioConsumers.current[key]) {
                 const consumer = audioConsumers.current[key][key2];
                 consumer.close();
-                delete audioConsumers.current[key];
+                delete audioConsumers.current[key][key2];
             }
         }
 
@@ -285,7 +307,6 @@ function MeetRoom(props: any) {
 
         disconnectSocket();
         setIsConnected(false);
-        setIsStartMedia(false);
     }
 
     function playVideo(element: any, stream: any) {
@@ -384,6 +405,17 @@ function MeetRoom(props: any) {
         return element;
     }
 
+    function removeRemoteVideoByMode(id: any, mode: string) {
+        console.log(' ---- removeRemoteVideo() id=' + id);
+        delete consumersStream.current[id][mode];
+        setRemoteVideos((peers: any) => {
+            const newPeers: any = peers;
+            delete newPeers[id][mode];
+
+            return { ...peers, ...newPeers };
+        });
+    }
+
     function removeRemoteVideo(id: any) {
         console.log(' ---- removeRemoteVideo() id=' + id);
         delete consumersStream.current[id];
@@ -467,7 +499,7 @@ function MeetRoom(props: any) {
                 '--consumer producer closed. remoteId=' + consumer.remoteId
             );
             consumer.close();
-            removeConsumer(consumer.remoteId, kind);
+            removeConsumer(consumer.remoteId, kind, mode);
             removeRemoteVideo(consumer.remoteId);
         });
         consumer.on('trackended', () => {
@@ -482,7 +514,11 @@ function MeetRoom(props: any) {
 
         if (kind === 'video') {
             console.log('--try resumeAdd --');
-            sendRequest('resumeAdd', { remoteId: remoteSocketId, kind: kind })
+            sendRequest('resumeAdd', {
+                remoteId: remoteSocketId,
+                kind: kind,
+                mode,
+            })
                 .then(() => {
                     console.log('resumeAdd OK');
                 })
@@ -586,18 +622,18 @@ function MeetRoom(props: any) {
             const videoTrack = localStream.current.getVideoTracks()[0];
             if (videoTrack) {
                 const trackParams = { track: videoTrack };
-                videoProducer.current = await producerTransport.current.produce(
-                    trackParams
-                );
+                videoProducer.current[
+                    'stream'
+                ] = await producerTransport.current.produce(trackParams);
             }
         }
         if (useAudio) {
             const audioTrack = localStream.current.getAudioTracks()[0];
             if (audioTrack) {
                 const trackParams = { track: audioTrack };
-                audioProducer.current = await producerTransport.current.produce(
-                    trackParams
-                );
+                audioProducer.current[
+                    'stream'
+                ] = await producerTransport.current.produce(trackParams);
             }
         }
     }
@@ -721,42 +757,20 @@ function MeetRoom(props: any) {
     ) {
         console.log('----- consumeAll() -----');
 
-        let videoIdsCount = 0;
         remoteVideoIds.forEach((rId: any) => {
-            new Promise((resolve: any, reject: any) => {
-                consumeAdd(transport, rId, null, 'video', 'stream').then(
-                    (resp: any) => {
-                        consumeAdd(
-                            transport,
-                            rId,
-                            null,
-                            'video',
-                            'share_screen'
-                        );
-                    }
-                );
-
-                videoIdsCount++;
-                resolve();
-            });
+            consumeAdd(transport, rId, null, 'video', 'stream').then(
+                (resp: any) => {
+                    consumeAdd(transport, rId, null, 'video', 'share_screen');
+                }
+            );
         });
         let audioIdsCount = 0;
         remotAudioIds.forEach((rId: any) => {
-            new Promise((resolve: any, reject: any) => {
-                consumeAdd(transport, rId, null, 'audio', 'stream').then(
-                    (resp: any) => {
-                        consumeAdd(
-                            transport,
-                            rId,
-                            null,
-                            'audio',
-                            'share_screen'
-                        );
-                    }
-                );
-                audioIdsCount++;
-                resolve();
-            });
+            consumeAdd(transport, rId, null, 'audio', 'stream').then(
+                (resp: any) => {
+                    consumeAdd(transport, rId, null, 'audio', 'share_screen');
+                }
+            );
         });
     }
 
@@ -769,15 +783,18 @@ function MeetRoom(props: any) {
         }
     }
 
-    function removeConsumer(id: any, kind: any) {
+    function removeConsumer(id: any, kind: any, mode: string) {
+        if (mode == undefined) {
+            return false;
+        }
         if (kind === 'video') {
-            delete videoConsumers.current[id];
+            delete videoConsumers.current[id][mode];
             console.log(
                 'videoConsumers count=' +
                     Object.keys(videoConsumers.current).length
             );
         } else if (kind === 'audio') {
-            delete audioConsumers.current[id];
+            delete audioConsumers.current[id][mode];
             console.log(
                 'audioConsumers count=' +
                     Object.keys(audioConsumers.current).length
@@ -904,14 +921,23 @@ function MeetRoom(props: any) {
                 const localId = message.localId;
                 const remoteId = message.remoteId;
                 const kind = message.kind;
+                const mode = message.mode;
                 console.log(
                     '--try removeConsumer remoteId=%s, localId=%s, track=%s',
                     remoteId,
                     localId,
                     kind
                 );
-                removeConsumer(remoteId, kind);
+                removeConsumer(remoteId, kind, mode);
                 removeRemoteVideo(remoteId);
+            });
+            socket.on('shareScreenClosed', function (payload: any) {
+                console.log('socket.io shareScreenClosed:', payload);
+                const callerID = payload.callerID;
+
+                removeConsumer(callerID, 'video', 'share_screen');
+                removeConsumer(callerID, 'audio', 'share_screen');
+                removeRemoteVideoByMode(callerID, 'share_screen');
             });
         });
     };
@@ -962,7 +988,7 @@ function MeetRoom(props: any) {
             {isShareScreen ? (
                 <button
                     disabled={!isStartMedia || !isConnected}
-                    onClick={handleStopScreenShare}
+                    onClick={handleDisconnectScreenShare}
                 >
                     Stop Screen
                 </button>
