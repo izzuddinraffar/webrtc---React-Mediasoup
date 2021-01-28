@@ -13,7 +13,7 @@ const CreateRemoteVideos = (props: any) => {
         console.log(props);
         props
             .playVideo(remoteVideo.current, props.peer.stream)
-            .then(() => {
+            ?.then(() => {
                 remoteVideo.current.volume = 1.0;
             })
             .catch((err: any) => {
@@ -35,16 +35,20 @@ const CreateRemoteVideos = (props: any) => {
 export const MemoizedCreateRemoteVideos = React.memo(CreateRemoteVideos);
 
 function MeetRoom(props: any) {
+    const localScreen: any = React.useRef();
+    const localStreamScreen: any = React.useRef();
+
     const localVideo: any = React.useRef();
     const localStream: any = React.useRef();
     const clientId: any = React.useRef();
     const device: any = React.useRef();
     const producerTransport: any = React.useRef();
-    const videoProducer: any = React.useRef();
-    const audioProducer: any = React.useRef();
+    const videoProducer: any = React.useRef({});
+    const audioProducer: any = React.useRef({});
     const consumerTransport: any = React.useRef();
     const videoConsumers: any = React.useRef({});
     const audioConsumers: any = React.useRef({});
+    const consumersStream: any = React.useRef({});
     const socketRef: any = React.useRef();
 
     const [useVideo, setUseVideo] = React.useState(true);
@@ -52,279 +56,48 @@ function MeetRoom(props: any) {
     const [isStartMedia, setIsStartMedia] = React.useState(false);
     const [isConnected, setIsConnected] = React.useState(false);
     const [remoteVideos, setRemoteVideos]: any = React.useState({});
+    const [isShareScreen, setIsShareScreen] = React.useState(false);
 
     // ============ UI button ==========
-    const handleUseVideo = (e: any) => {
-        setUseVideo(!useVideo);
-    };
-    const handleUseAudio = (e: any) => {
-        setUseAudio(!useAudio);
-    };
 
-    const handleStartMedia = () => {
-        if (localStream.current) {
+    const handleStartScreenShare = () => {
+        if (localStreamScreen.current) {
             console.warn('WARN: local media ALREADY started');
             return;
         }
 
-        navigator.mediaDevices
-            .getUserMedia({ audio: useAudio, video: useVideo })
+        const mediaDevices: any = navigator.mediaDevices;
+        mediaDevices
+            .getDisplayMedia({ audio: useAudio, video: useVideo })
             .then((stream: any) => {
-                localStream.current = stream;
-                playVideo(localVideo.current, localStream.current);
-                setIsStartMedia(true);
+                localStreamScreen.current = stream;
+
+                playVideo(localScreen.current, localStreamScreen.current);
+                handleConnectScreenShare();
+                setIsShareScreen(true);
+                const screenTrack = stream.getTracks()[0];
+                screenTrack.onended = function () {
+                    handleDisconnectScreenShare();
+                };
             })
-            .catch((err) => {
+            .catch((err: any) => {
                 console.error('media ERROR:', err);
             });
     };
 
-    function handleStopMedia() {
-        if (localStream.current) {
-            pauseVideo(localVideo.current);
-            stopLocalStream(localStream.current);
-            localStream.current = null;
-            setIsStartMedia(false);
-        }
-    }
-
-    function handleDisconnect() {
-        if (localStream.current) {
-            pauseVideo(localVideo.current);
-            stopLocalStream(localStream.current);
-            localStream.current = null;
-        }
-        if (videoProducer.current) {
-            videoProducer.current.close(); // localStream will stop
-            videoProducer.current = null;
-        }
-        if (audioProducer.current) {
-            audioProducer.current.close(); // localStream will stop
-            audioProducer.current = null;
-        }
-        if (producerTransport.current) {
-            producerTransport.current.close(); // localStream will stop
-            producerTransport.current = null;
-        }
-
-        for (const key in videoConsumers.current) {
-            const consumer = videoConsumers.current[key];
-            consumer.close();
-            delete videoConsumers.current[key];
-        }
-        for (const key in audioConsumers.current) {
-            const consumer = audioConsumers.current[key];
-            consumer.close();
-            delete audioConsumers.current[key];
-        }
-
-        if (consumerTransport.current) {
-            consumerTransport.current.close();
-            consumerTransport.current = null;
-        }
-
-        removeAllRemoteVideo();
-
-        disconnectSocket();
-        setIsConnected(false);
-        setIsStartMedia(false);
-    }
-
-    function playVideo(element: any, stream: any) {
-        if (element.srcObject) {
-            console.warn('element ALREADY playing, so ignore');
-            return;
-        }
-        element.srcObject = stream;
-        element.volume = 0;
-        return element.play();
-    }
-
-    function pauseVideo(element: any) {
-        element.pause();
-        element.srcObject = null;
-    }
-
-    function stopLocalStream(stream: any) {
-        let tracks = stream.getTracks();
-        if (!tracks) {
-            console.warn('NO tracks');
-            return;
-        }
-
-        tracks.forEach((track: any) => track.stop());
-    }
-
-    function addRemoteTrack(id: any, track: any) {
-        // let video: any = findRemoteVideo(id);
-        // if (!video) {
-        //     video = addRemoteVideo(id);
-        //     video.controls = '1';
-        // }
-
-        // if (video.srcObject) {
-        //     video.srcObject.addTrack(track);
-        //     return;
-        // }
-
-        if (id === clientId.current) {
-            return false;
-        }
-
-        const newStream = new MediaStream();
-        newStream.addTrack(track);
-
-        setRemoteVideos((peers: any) => {
-            const newPeers: any = peers;
-            newPeers[id] = {
-                stream: newStream,
-                socket_id: id,
-            };
-            return { ...peers, ...newPeers };
-        });
-
-        // playVideo(video, newStream)
-        //     .then(() => {
-        //         video.volume = 1.0;
-        //     })
-        //     .catch((err: any) => {
-        //         console.error('media ERROR:', err);
-        //     });
-    }
-
-    function addRemoteVideo(id: any) {
-        let existElement = findRemoteVideo(id);
-        if (existElement) {
-            console.warn('remoteVideo element ALREADY exist for id=' + id);
-            return existElement;
-        }
-
-        let element = document.createElement('video');
-        return element;
-    }
-
-    function findRemoteVideo(id: any) {
-        let element = remoteVideos.current[id];
-        return element;
-    }
-
-    function removeRemoteVideo(id: any) {
-        console.log(' ---- removeRemoteVideo() id=' + id);
-        setRemoteVideos((peers: any) => {
-            const newPeers: any = peers;
-            delete newPeers[id];
-
-            return { ...peers, ...newPeers };
-        });
-        // if (element) {
-        //     element.pause();
-        //     element.srcObject = null;
-        //     remoteContainer.removeChild(element);
-        // } else {
-        //     console.log('child element NOT FOUND');
-        // }
-    }
-
-    function removeAllRemoteVideo() {
-        console.log(' ---- removeAllRemoteVideo() id');
-        setRemoteVideos((peers: any) => {
-            const newPeers = {};
-
-            return { ...newPeers };
-        });
-        // while (remoteContainer.firstChild) {
-        //     remoteContainer.firstChild.pause();
-        //     remoteContainer.firstChild.srcObject = null;
-        //     remoteContainer.removeChild(remoteContainer.firstChild);
-        // }
-    }
-
-    async function consumeAdd(
-        transport: any,
-        remoteSocketId: any,
-        prdId: any,
-        trackKind: any
-    ) {
-        console.log('--start of consumeAdd -- kind=%s', trackKind);
-        const { rtpCapabilities } = device.current;
-        //const data = await socket.request('consume', { rtpCapabilities });
-        const data = await sendRequest('consumeAdd', {
-            rtpCapabilities: rtpCapabilities,
-            remoteId: remoteSocketId,
-            kind: trackKind,
-        }).catch((err) => {
-            console.error('consumeAdd ERROR:', err);
-        });
-        const { producerId, id, kind, rtpParameters }: any = data;
-        if (prdId && prdId !== producerId) {
-            console.warn('producerID NOT MATCH');
-        }
-
-        let codecOptions = {};
-        const consumer = await transport.consume({
-            id,
-            producerId,
-            kind,
-            rtpParameters,
-            codecOptions,
-        });
-        //const stream = new MediaStream();
-        //stream.addTrack(consumer.track);
-
-        addRemoteTrack(remoteSocketId, consumer.track);
-        addConsumer(remoteSocketId, consumer, kind);
-        consumer.remoteId = remoteSocketId;
-        consumer.on('transportclose', () => {
-            console.log(
-                '--consumer transport closed. remoteId=' + consumer.remoteId
-            );
-            //consumer.close();
-            //removeConsumer(remoteId);
-            //removeRemoteVideo(consumer.remoteId);
-        });
-        consumer.on('producerclose', () => {
-            console.log(
-                '--consumer producer closed. remoteId=' + consumer.remoteId
-            );
-            consumer.close();
-            removeConsumer(consumer.remoteId, kind);
-            removeRemoteVideo(consumer.remoteId);
-        });
-        consumer.on('trackended', () => {
-            console.log('--consumer trackended. remoteId=' + consumer.remoteId);
-            //consumer.close();
-            //removeConsumer(remoteId);
-            //removeRemoteVideo(consumer.remoteId);
-        });
-
-        console.log('--end of consumeAdd');
-        //return stream;
-
-        if (kind === 'video') {
-            console.log('--try resumeAdd --');
-            sendRequest('resumeAdd', { remoteId: remoteSocketId, kind: kind })
-                .then(() => {
-                    console.log('resumeAdd OK');
-                })
-                .catch((err) => {
-                    console.error('resumeAdd ERROR:', err);
-                });
-        }
-    }
-
-    async function handleConnect() {
-        if (!localStream.current) {
+    async function handleConnectScreenShare() {
+        if (!localStreamScreen.current) {
             console.warn('WARN: local media NOT READY');
             return;
         }
 
-        // --- connect socket.io ---
-        await connectSocket().catch((err: any) => {
-            console.error(err);
-            return;
-        });
+        // // --- connect socket.io ---
+        // await connectSocket().catch((err: any) => {
+        //     console.error(err);
+        //     return;
+        // });
 
-        console.log('connected');
+        // console.log('connected');
 
         // --- get capabilities --
         const data = await sendRequest('getRouterRtpCapabilities', {});
@@ -333,7 +106,9 @@ function MeetRoom(props: any) {
 
         // --- get transport info ---
         console.log('--- createProducerTransport --');
-        const params = await sendRequest('createProducerTransport', {});
+        const params = await sendRequest('createProducerTransport', {
+            mode: 'share_screen',
+        });
         console.log('transport params:', params);
         producerTransport.current = device.current.createSendTransport(params);
         console.log('createSendTransport:', producerTransport.current);
@@ -364,6 +139,454 @@ function MeetRoom(props: any) {
                         transportId: producerTransport.current.id,
                         kind,
                         rtpParameters,
+                        mode: 'share_screen',
+                    });
+                    callback({ id });
+                    console.log('--produce requested, then subscribe ---');
+                    subscribe();
+                } catch (err) {
+                    errback(err);
+                }
+            }
+        );
+
+        producerTransport.current.on('connectionstatechange', (state: any) => {
+            switch (state) {
+                case 'connecting':
+                    console.log('publishing...');
+                    break;
+
+                case 'connected':
+                    console.log('published');
+                    //  setIsConnected(true);
+                    break;
+
+                case 'failed':
+                    console.log('failed');
+                    producerTransport.current.close();
+                    break;
+
+                default:
+                    break;
+            }
+        });
+
+        if (useVideo) {
+            const videoTrack = localStreamScreen.current.getVideoTracks()[0];
+            if (videoTrack) {
+                const trackParams = { track: videoTrack };
+                videoProducer.current[
+                    'share_screen'
+                ] = await producerTransport.current.produce(trackParams);
+            }
+        }
+        if (useAudio) {
+            const audioTrack = localStreamScreen.current.getAudioTracks()[0];
+            if (audioTrack) {
+                const trackParams = { track: audioTrack };
+                audioProducer.current[
+                    'share_screen'
+                ] = await producerTransport.current.produce(trackParams);
+            }
+        }
+    }
+
+    function handleStopScreenShare() {
+        if (localStreamScreen.current) {
+            pauseVideo(localScreen.current);
+            stopLocalStream(localStreamScreen.current);
+            localStreamScreen.current = null;
+            setIsShareScreen(false);
+        }
+    }
+    async function handleDisconnectScreenShare() {
+        handleStopScreenShare();
+        {
+            const producer = videoProducer.current['share_screen'];
+            producer?.close();
+            delete videoProducer.current['share_screen'];
+        }
+        {
+            const producer = audioProducer.current['share_screen'];
+            producer?.close();
+            delete audioProducer.current['share_screen'];
+        }
+
+        await sendRequest('producerStopShareScreen', {});
+    }
+
+    const handleUseVideo = (e: any) => {
+        setUseVideo(!useVideo);
+    };
+    const handleUseAudio = (e: any) => {
+        setUseAudio(!useAudio);
+    };
+
+    const handleStartMedia = () => {
+        if (localStream.current) {
+            console.warn('WARN: local media ALREADY started');
+            return;
+        }
+
+        navigator.mediaDevices
+            .getUserMedia({ audio: useAudio, video: useVideo })
+            .then((stream: any) => {
+                localStream.current = stream;
+                playVideo(localVideo.current, localStream.current);
+                setIsStartMedia(true);
+            })
+            .catch((err: any) => {
+                console.error('media ERROR:', err);
+            });
+    };
+
+    function handleStopMedia() {
+        if (localStream.current) {
+            pauseVideo(localVideo.current);
+            stopLocalStream(localStream.current);
+            localStream.current = null;
+            setIsStartMedia(false);
+        }
+    }
+
+    function handleDisconnect() {
+        handleStopMedia();
+        handleStopScreenShare();
+        // if (videoProducer.current) {
+        //     videoProducer.current.close(); // localStream will stop
+        //     videoProducer.current = null;
+        // }
+        {
+            for (const mode in videoProducer.current) {
+                const producer = videoProducer.current[mode];
+                producer?.close();
+                delete videoProducer.current[mode];
+            }
+        }
+        {
+            for (const mode in audioProducer.current) {
+                const producer = audioProducer.current[mode];
+                producer?.close();
+                delete audioProducer.current[mode];
+            }
+        }
+        // if (audioProducer.current) {
+        //     audioProducer.current.close(); // localStream will stop
+        //     audioProducer.current = null;
+        // }
+        if (producerTransport.current) {
+            producerTransport.current.close(); // localStream will stop
+            producerTransport.current = null;
+        }
+
+        for (const key in videoConsumers.current) {
+            for (const key2 in videoConsumers.current[key]) {
+                const consumer = videoConsumers.current[key][key2];
+                consumer.close();
+                delete videoConsumers.current[key][key2];
+            }
+        }
+        for (const key in audioConsumers.current) {
+            for (const key2 in audioConsumers.current[key]) {
+                const consumer = audioConsumers.current[key][key2];
+                consumer.close();
+                delete audioConsumers.current[key][key2];
+            }
+        }
+
+        if (consumersStream.current) {
+            consumersStream.current = {};
+        }
+
+        if (consumerTransport.current) {
+            consumerTransport.current.close();
+            consumerTransport.current = null;
+        }
+
+        removeAllRemoteVideo();
+
+        disconnectSocket();
+        setIsConnected(false);
+    }
+
+    function playVideo(element: any, stream: any) {
+        if (element.srcObject) {
+            console.warn('element ALREADY playing, so ignore');
+            return;
+        }
+        element.srcObject = stream;
+        element.volume = 0;
+        return element.play();
+    }
+
+    function pauseVideo(element: any) {
+        element.pause();
+        element.srcObject = null;
+    }
+
+    function stopLocalStream(stream: any) {
+        let tracks = stream.getTracks();
+        if (!tracks) {
+            console.warn('NO tracks');
+            return;
+        }
+
+        tracks.forEach((track: any) => track.stop());
+    }
+
+    function addRemoteTrack(id: any, track: any, mode: string) {
+        // let video: any = findRemoteVideo(id);
+        // if (!video) {
+        //     video = addRemoteVideo(id);
+        //     video.controls = '1';
+        // }
+
+        // if (video.srcObject) {
+        //     video.srcObject.addTrack(track);
+        //     return;
+        // }
+
+        if (id === clientId.current) {
+            return false;
+        }
+
+        const newStream = new MediaStream();
+        newStream.addTrack(track);
+
+        if (consumersStream.current[id] == undefined) {
+            consumersStream.current[id] = {};
+        }
+        consumersStream.current[id][mode] = {
+            stream: newStream,
+            socket_id: id,
+        };
+
+        setRemoteVideos((peers: any) => {
+            const newPeers: any = peers;
+
+            return { ...consumersStream.current };
+        });
+
+        // setRemoteVideos((peers: any) => {
+        //     const newPeers: any = peers;
+        //     if (newPeers[id] == undefined) {
+        //         newPeers[id] = {};
+        //     }
+        //     newPeers[id][mode] = {
+        //         stream: newStream,
+        //         socket_id: id,
+        //     };
+        //     return { ...peers, ...newPeers };
+        // });
+        // setShouldLoadConsumerShareScreen
+
+        // playVideo(video, newStream)
+        //     .then(() => {
+        //         video.volume = 1.0;
+        //     })
+        //     .catch((err: any) => {
+        //         console.error('media ERROR:', err);
+        //     });
+    }
+
+    function addRemoteVideo(id: any) {
+        let existElement = findRemoteVideo(id);
+        if (existElement) {
+            console.warn('remoteVideo element ALREADY exist for id=' + id);
+            return existElement;
+        }
+
+        let element = document.createElement('video');
+        return element;
+    }
+
+    function findRemoteVideo(id: any) {
+        let element = remoteVideos.current[id];
+        return element;
+    }
+
+    function removeRemoteVideoByMode(id: any, mode: string) {
+        console.log(' ---- removeRemoteVideo() id=' + id);
+        delete consumersStream.current[id][mode];
+        setRemoteVideos((peers: any) => {
+            const newPeers: any = peers;
+            delete newPeers[id][mode];
+
+            return { ...peers, ...newPeers };
+        });
+    }
+
+    function removeRemoteVideo(id: any) {
+        console.log(' ---- removeRemoteVideo() id=' + id);
+        delete consumersStream.current[id];
+        setRemoteVideos((peers: any) => {
+            const newPeers: any = peers;
+            delete newPeers[id];
+
+            return { ...peers, ...newPeers };
+        });
+        // if (element) {
+        //     element.pause();
+        //     element.srcObject = null;
+        //     remoteContainer.removeChild(element);
+        // } else {
+        //     console.log('child element NOT FOUND');
+        // }
+    }
+
+    function removeAllRemoteVideo() {
+        console.log(' ---- removeAllRemoteVideo() id');
+        consumersStream.current = {};
+        setRemoteVideos((peers: any) => {
+            const newPeers = {};
+
+            return { ...newPeers };
+        });
+        // while (remoteContainer.firstChild) {
+        //     remoteContainer.firstChild.pause();
+        //     remoteContainer.firstChild.srcObject = null;
+        //     remoteContainer.removeChild(remoteContainer.firstChild);
+        // }
+    }
+
+    async function consumeAdd(
+        transport: any,
+        remoteSocketId: any,
+        prdId: any,
+        trackKind: any,
+        mode: any = 'stream'
+    ) {
+        console.log('--start of consumeAdd -- kind=%s', trackKind);
+        const { rtpCapabilities } = device.current;
+        //const data = await socket.request('consume', { rtpCapabilities });
+        const data = await sendRequest('consumeAdd', {
+            rtpCapabilities: rtpCapabilities,
+            remoteId: remoteSocketId,
+            kind: trackKind,
+            mode: mode,
+        }).catch((err) => {
+            console.error('consumeAdd ERROR:', err);
+        });
+        const { producerId, id, kind, rtpParameters }: any = data;
+        if (prdId && prdId !== producerId) {
+            console.warn('producerID NOT MATCH');
+        }
+
+        let codecOptions = {};
+        const consumer = await transport.consume({
+            id,
+            producerId,
+            kind,
+            rtpParameters,
+            codecOptions,
+            mode,
+        });
+        //const stream = new MediaStream();
+        //stream.addTrack(consumer.track);
+
+        addConsumer(remoteSocketId, consumer, kind, mode);
+        consumer.remoteId = remoteSocketId;
+        consumer.on('transportclose', () => {
+            console.log(
+                '--consumer transport closed. remoteId=' + consumer.remoteId
+            );
+            //consumer.close();
+            //removeConsumer(remoteId);
+            //removeRemoteVideo(consumer.remoteId);
+        });
+        consumer.on('producerclose', () => {
+            console.log(
+                '--consumer producer closed. remoteId=' + consumer.remoteId
+            );
+            consumer.close();
+            removeConsumer(consumer.remoteId, kind, mode);
+            removeRemoteVideo(consumer.remoteId);
+        });
+        consumer.on('trackended', () => {
+            console.log('--consumer trackended. remoteId=' + consumer.remoteId);
+            //consumer.close();
+            //removeConsumer(remoteId);
+            //removeRemoteVideo(consumer.remoteId);
+        });
+
+        console.log('--end of consumeAdd');
+        //return stream;
+
+        if (kind === 'video') {
+            console.log('--try resumeAdd --');
+            sendRequest('resumeAdd', {
+                remoteId: remoteSocketId,
+                kind: kind,
+                mode,
+            })
+                .then(() => {
+                    console.log('resumeAdd OK');
+                })
+                .catch((err) => {
+                    console.error('resumeAdd ERROR:', err);
+                });
+        }
+        return new Promise((resolve: any, reject: any) => {
+            addRemoteTrack(remoteSocketId, consumer.track, mode);
+            resolve();
+        });
+    }
+
+    async function handleConnect() {
+        if (!localStream.current) {
+            console.warn('WARN: local media NOT READY');
+            return;
+        }
+
+        // --- connect socket.io ---
+        await connectSocket().catch((err: any) => {
+            console.error(err);
+            return;
+        });
+
+        console.log('connected');
+
+        // --- get capabilities --
+        const data = await sendRequest('getRouterRtpCapabilities', {});
+        console.log('getRouterRtpCapabilities:', data);
+        await loadDevice(data);
+
+        // --- get transport info ---
+        console.log('--- createProducerTransport --');
+        const params = await sendRequest('createProducerTransport', {
+            mode: 'stream',
+        });
+        console.log('transport params:', params);
+        producerTransport.current = device.current.createSendTransport(params);
+        console.log('createSendTransport:', producerTransport.current);
+
+        // --- join & start publish --
+        producerTransport.current.on(
+            'connect',
+            async ({ dtlsParameters }: any, callback: any, errback: any) => {
+                console.log('--trasnport connect');
+                sendRequest('connectProducerTransport', {
+                    dtlsParameters: dtlsParameters,
+                })
+                    .then(callback)
+                    .catch(errback);
+            }
+        );
+
+        producerTransport.current.on(
+            'produce',
+            async (
+                { kind, rtpParameters }: any,
+                callback: any,
+                errback: any
+            ) => {
+                console.log('--trasnport produce');
+                try {
+                    const { id }: any = await sendRequest('produce', {
+                        transportId: producerTransport.current.id,
+                        kind,
+                        rtpParameters,
+                        mode: 'stream',
                     });
                     callback({ id });
                     console.log('--produce requested, then subscribe ---');
@@ -399,18 +622,18 @@ function MeetRoom(props: any) {
             const videoTrack = localStream.current.getVideoTracks()[0];
             if (videoTrack) {
                 const trackParams = { track: videoTrack };
-                videoProducer.current = await producerTransport.current.produce(
-                    trackParams
-                );
+                videoProducer.current[
+                    'stream'
+                ] = await producerTransport.current.produce(trackParams);
             }
         }
         if (useAudio) {
             const audioTrack = localStream.current.getAudioTracks()[0];
             if (audioTrack) {
                 const trackParams = { track: audioTrack };
-                audioProducer.current = await producerTransport.current.produce(
-                    trackParams
-                );
+                audioProducer.current[
+                    'stream'
+                ] = await producerTransport.current.produce(trackParams);
             }
         }
     }
@@ -533,11 +756,21 @@ function MeetRoom(props: any) {
         remotAudioIds: any
     ) {
         console.log('----- consumeAll() -----');
+
         remoteVideoIds.forEach((rId: any) => {
-            consumeAdd(transport, rId, null, 'video');
+            consumeAdd(transport, rId, null, 'video', 'stream').then(
+                (resp: any) => {
+                    consumeAdd(transport, rId, null, 'video', 'share_screen');
+                }
+            );
         });
+        let audioIdsCount = 0;
         remotAudioIds.forEach((rId: any) => {
-            consumeAdd(transport, rId, null, 'audio');
+            consumeAdd(transport, rId, null, 'audio', 'stream').then(
+                (resp: any) => {
+                    consumeAdd(transport, rId, null, 'audio', 'share_screen');
+                }
+            );
         });
     }
 
@@ -550,15 +783,18 @@ function MeetRoom(props: any) {
         }
     }
 
-    function removeConsumer(id: any, kind: any) {
+    function removeConsumer(id: any, kind: any, mode: string) {
+        if (mode == undefined) {
+            return false;
+        }
         if (kind === 'video') {
-            delete videoConsumers.current[id];
+            delete videoConsumers.current[id][mode];
             console.log(
                 'videoConsumers count=' +
                     Object.keys(videoConsumers.current).length
             );
         } else if (kind === 'audio') {
-            delete audioConsumers.current[id];
+            delete audioConsumers.current[id][mode];
             console.log(
                 'audioConsumers count=' +
                     Object.keys(audioConsumers.current).length
@@ -568,25 +804,35 @@ function MeetRoom(props: any) {
         }
     }
 
-    function getConsumer(id: any, kind: any) {
-        if (kind === 'video') {
-            return videoConsumers.current[id];
-        } else if (kind === 'audio') {
-            return audioConsumers.current[id];
-        } else {
-            console.warn('UNKNOWN consumer kind=' + kind);
-        }
-    }
+    // function getConsumer(id: any, kind: any) {
+    //     if (kind === 'video') {
+    //         return videoConsumers.current[id];
+    //     } else if (kind === 'audio') {
+    //         return audioConsumers.current[id];
+    //     } else {
+    //         console.warn('UNKNOWN consumer kind=' + kind);
+    //     }
+    // }
 
-    function addConsumer(id: any, consumer: any, kind: any) {
+    function addConsumer(id: any, consumer: any, kind: any, mode: any) {
+        if (id === clientId.current) {
+            return false;
+        }
         if (kind === 'video') {
-            videoConsumers.current[id] = consumer;
+            if (videoConsumers.current[id] == undefined) {
+                videoConsumers.current[id] = {};
+            }
+            videoConsumers.current[id][mode] = consumer;
             console.log(
                 'videoConsumers count=' +
                     Object.keys(videoConsumers.current).length
             );
         } else if (kind === 'audio') {
-            audioConsumers.current[id] = consumer;
+            if (audioConsumers.current[id] == undefined) {
+                audioConsumers.current[id] = {};
+            }
+            audioConsumers.current[id][mode] = consumer;
+
             console.log(
                 'audioConsumers count=' +
                     Object.keys(audioConsumers.current).length
@@ -639,6 +885,8 @@ function MeetRoom(props: any) {
                 const remoteId = message.socketId;
                 const prdId = message.producerId;
                 const kind = message.kind;
+                const mode = message.mode;
+
                 if (kind === 'video') {
                     console.log(
                         '--try consumeAdd remoteId=' +
@@ -652,7 +900,8 @@ function MeetRoom(props: any) {
                         consumerTransport.current,
                         remoteId,
                         prdId,
-                        kind
+                        kind,
+                        mode
                     );
                 } else if (kind === 'audio') {
                     //console.warn('-- audio NOT SUPPORTED YET. skip remoteId=' + remoteId + ', prdId=' + prdId + ', kind=' + kind);
@@ -664,12 +913,6 @@ function MeetRoom(props: any) {
                             ', kind=' +
                             kind
                     );
-                    consumeAdd(
-                        consumerTransport.current,
-                        remoteId,
-                        prdId,
-                        kind
-                    );
                 }
             });
 
@@ -678,21 +921,26 @@ function MeetRoom(props: any) {
                 const localId = message.localId;
                 const remoteId = message.remoteId;
                 const kind = message.kind;
+                const mode = message.mode;
                 console.log(
                     '--try removeConsumer remoteId=%s, localId=%s, track=%s',
                     remoteId,
                     localId,
                     kind
                 );
-                removeConsumer(remoteId, kind);
+                removeConsumer(remoteId, kind, mode);
                 removeRemoteVideo(remoteId);
+            });
+            socket.on('shareScreenClosed', function (payload: any) {
+                console.log('socket.io shareScreenClosed:', payload);
+                const callerID = payload.callerID;
+
+                removeConsumer(callerID, 'video', 'share_screen');
+                removeConsumer(callerID, 'audio', 'share_screen');
+                removeRemoteVideoByMode(callerID, 'share_screen');
             });
         });
     };
-
-    // React.useEffect(() => {
-
-    // }, []);
 
     return (
         <div>
@@ -737,6 +985,22 @@ function MeetRoom(props: any) {
             >
                 Disconnect
             </button>
+            {isShareScreen ? (
+                <button
+                    disabled={!isStartMedia || !isConnected}
+                    onClick={handleDisconnectScreenShare}
+                >
+                    Stop Screen
+                </button>
+            ) : (
+                <button
+                    disabled={!isStartMedia || !isConnected}
+                    onClick={handleStartScreenShare}
+                >
+                    Start Screen
+                </button>
+            )}
+
             <div>
                 local video
                 <video
@@ -748,16 +1012,31 @@ function MeetRoom(props: any) {
                         border: '1px solid black',
                     }}
                 ></video>
+                <video
+                    ref={localScreen}
+                    autoPlay
+                    style={{
+                        width: '240px',
+                        height: '180px',
+                        border: '1px solid black',
+                    }}
+                ></video>
             </div>
             <div>remote videos</div>
+            {console.log(remoteVideos)}
             {Object.keys(remoteVideos).map((key: any, index: number) => {
-                const peer: any = remoteVideos[key];
-                return (
-                    <MemoizedCreateRemoteVideos
-                        key={peer.socket_id}
-                        peer={peer}
-                        playVideo={playVideo}
-                    />
+                return Object.keys(remoteVideos[key]).map(
+                    (key2: any, index2: number) => {
+                        const peer: any = remoteVideos[key][key2];
+
+                        return (
+                            <MemoizedCreateRemoteVideos
+                                key={peer.socket_id + '__' + key2}
+                                peer={peer}
+                                playVideo={playVideo}
+                            />
+                        );
+                    }
                 );
             })}
         </div>
