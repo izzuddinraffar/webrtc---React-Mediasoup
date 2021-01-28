@@ -2,6 +2,10 @@ import React, { Suspense, lazy } from 'react';
 import { Device } from 'mediasoup-client';
 import { io as socketIOClient } from 'socket.io-client';
 import { config } from '../../app.config';
+
+const MODE_STREAM = 'stream';
+const MODE_SHARE_SCREEN = 'share_screen';
+
 const CreateRemoteVideos = (props: any) => {
     const remoteVideo: any = React.useRef();
     React.useEffect(() => {
@@ -14,7 +18,9 @@ const CreateRemoteVideos = (props: any) => {
         props
             .playVideo(remoteVideo.current, props.peer.stream)
             ?.then(() => {
-                remoteVideo.current.volume = 1.0;
+                remoteVideo.current.volume = 1;
+                console.log('remoteVideo.current');
+                console.log(remoteVideo.current);
             })
             .catch((err: any) => {
                 console.error('media ERROR:', err);
@@ -23,6 +29,7 @@ const CreateRemoteVideos = (props: any) => {
     return (
         <video
             ref={remoteVideo}
+            controls
             autoPlay
             style={{
                 width: '240px',
@@ -107,7 +114,7 @@ function MeetRoom(props: any) {
         // --- get transport info ---
         console.log('--- createProducerTransport --');
         const params = await sendRequest('createProducerTransport', {
-            mode: 'share_screen',
+            mode: MODE_SHARE_SCREEN,
         });
         console.log('transport params:', params);
         producerTransport.current = device.current.createSendTransport(params);
@@ -139,7 +146,7 @@ function MeetRoom(props: any) {
                         transportId: producerTransport.current.id,
                         kind,
                         rtpParameters,
-                        mode: 'share_screen',
+                        mode: MODE_SHARE_SCREEN,
                     });
                     callback({ id });
                     console.log('--produce requested, then subscribe ---');
@@ -176,7 +183,7 @@ function MeetRoom(props: any) {
             if (videoTrack) {
                 const trackParams = { track: videoTrack };
                 videoProducer.current[
-                    'share_screen'
+                    MODE_SHARE_SCREEN
                 ] = await producerTransport.current.produce(trackParams);
             }
         }
@@ -185,7 +192,7 @@ function MeetRoom(props: any) {
             if (audioTrack) {
                 const trackParams = { track: audioTrack };
                 audioProducer.current[
-                    'share_screen'
+                    MODE_SHARE_SCREEN
                 ] = await producerTransport.current.produce(trackParams);
             }
         }
@@ -202,14 +209,14 @@ function MeetRoom(props: any) {
     async function handleDisconnectScreenShare() {
         handleStopScreenShare();
         {
-            const producer = videoProducer.current['share_screen'];
+            const producer = videoProducer.current[MODE_SHARE_SCREEN];
             producer?.close();
-            delete videoProducer.current['share_screen'];
+            delete videoProducer.current[MODE_SHARE_SCREEN];
         }
         {
-            const producer = audioProducer.current['share_screen'];
+            const producer = audioProducer.current[MODE_SHARE_SCREEN];
             producer?.close();
-            delete audioProducer.current['share_screen'];
+            delete audioProducer.current[MODE_SHARE_SCREEN];
         }
 
         await sendRequest('producerStopShareScreen', {});
@@ -350,16 +357,24 @@ function MeetRoom(props: any) {
             return false;
         }
 
-        const newStream = new MediaStream();
-        newStream.addTrack(track);
+        console.log('addremotetrack');
+        console.log(track);
 
         if (consumersStream.current[id] == undefined) {
             consumersStream.current[id] = {};
         }
-        consumersStream.current[id][mode] = {
-            stream: newStream,
-            socket_id: id,
-        };
+
+        if (consumersStream.current[id][mode] == undefined) {
+            const newStream = new MediaStream();
+            newStream.addTrack(track);
+            consumersStream.current[id][mode] = {
+                stream: newStream,
+                socket_id: id,
+            };
+        } else {
+            //add audiotrack
+            consumersStream.current[id][mode].stream.addTrack(track);
+        }
 
         setRemoteVideos((peers: any) => {
             const newPeers: any = peers;
@@ -405,25 +420,30 @@ function MeetRoom(props: any) {
         return element;
     }
 
-    function removeRemoteVideoByMode(id: any, mode: string) {
-        console.log(' ---- removeRemoteVideo() id=' + id);
-        delete consumersStream.current[id][mode];
-        setRemoteVideos((peers: any) => {
-            const newPeers: any = peers;
-            delete newPeers[id][mode];
+    // function removeRemoteVideoByMode(id: any, mode: string) {
+    //     console.log(' ---- removeRemoteVideo() id=' + id);
+    //     delete consumersStream.current[id][mode];
+    //     setRemoteVideos((peers: any) => {
+    //         const newPeers: any = peers;
+    //         delete newPeers[id][mode];
 
-            return { ...peers, ...newPeers };
-        });
-    }
+    //         return { ...peers, ...newPeers };
+    //     });
+    // }
 
-    function removeRemoteVideo(id: any) {
+    function removeRemoteVideo(id: any, mode: string) {
         console.log(' ---- removeRemoteVideo() id=' + id);
-        delete consumersStream.current[id];
+        if (mode == MODE_STREAM) {
+            delete consumersStream.current[id];
+        } else {
+            delete consumersStream.current[id][mode];
+        }
+
         setRemoteVideos((peers: any) => {
             const newPeers: any = peers;
             delete newPeers[id];
 
-            return { ...peers, ...newPeers };
+            return { ...consumersStream.current };
         });
         // if (element) {
         //     element.pause();
@@ -454,7 +474,7 @@ function MeetRoom(props: any) {
         remoteSocketId: any,
         prdId: any,
         trackKind: any,
-        mode: any = 'stream'
+        mode: any = MODE_STREAM
     ) {
         console.log('--start of consumeAdd -- kind=%s', trackKind);
         const { rtpCapabilities } = device.current;
@@ -500,7 +520,7 @@ function MeetRoom(props: any) {
             );
             consumer.close();
             removeConsumer(consumer.remoteId, kind, mode);
-            removeRemoteVideo(consumer.remoteId);
+            removeRemoteVideo(consumer.remoteId, mode);
         });
         consumer.on('trackended', () => {
             console.log('--consumer trackended. remoteId=' + consumer.remoteId);
@@ -554,7 +574,7 @@ function MeetRoom(props: any) {
         // --- get transport info ---
         console.log('--- createProducerTransport --');
         const params = await sendRequest('createProducerTransport', {
-            mode: 'stream',
+            mode: MODE_STREAM,
         });
         console.log('transport params:', params);
         producerTransport.current = device.current.createSendTransport(params);
@@ -586,7 +606,7 @@ function MeetRoom(props: any) {
                         transportId: producerTransport.current.id,
                         kind,
                         rtpParameters,
-                        mode: 'stream',
+                        mode: MODE_STREAM,
                     });
                     callback({ id });
                     console.log('--produce requested, then subscribe ---');
@@ -623,7 +643,7 @@ function MeetRoom(props: any) {
             if (videoTrack) {
                 const trackParams = { track: videoTrack };
                 videoProducer.current[
-                    'stream'
+                    MODE_STREAM
                 ] = await producerTransport.current.produce(trackParams);
             }
         }
@@ -632,7 +652,7 @@ function MeetRoom(props: any) {
             if (audioTrack) {
                 const trackParams = { track: audioTrack };
                 audioProducer.current[
-                    'stream'
+                    MODE_STREAM
                 ] = await producerTransport.current.produce(trackParams);
             }
         }
@@ -758,17 +778,29 @@ function MeetRoom(props: any) {
         console.log('----- consumeAll() -----');
 
         remoteVideoIds.forEach((rId: any) => {
-            consumeAdd(transport, rId, null, 'video', 'stream').then(
+            consumeAdd(transport, rId, null, 'video', MODE_STREAM).then(
                 (resp: any) => {
-                    consumeAdd(transport, rId, null, 'video', 'share_screen');
+                    consumeAdd(
+                        transport,
+                        rId,
+                        null,
+                        'video',
+                        MODE_SHARE_SCREEN
+                    );
                 }
             );
         });
         let audioIdsCount = 0;
         remotAudioIds.forEach((rId: any) => {
-            consumeAdd(transport, rId, null, 'audio', 'stream').then(
+            consumeAdd(transport, rId, null, 'audio', MODE_STREAM).then(
                 (resp: any) => {
-                    consumeAdd(transport, rId, null, 'audio', 'share_screen');
+                    consumeAdd(
+                        transport,
+                        rId,
+                        null,
+                        'audio',
+                        MODE_SHARE_SCREEN
+                    );
                 }
             );
         });
@@ -788,13 +820,23 @@ function MeetRoom(props: any) {
             return false;
         }
         if (kind === 'video') {
-            delete videoConsumers.current[id][mode];
+            if (mode == MODE_STREAM) {
+                delete videoConsumers.current[id];
+            } else {
+                delete videoConsumers.current[id][mode];
+            }
+
             console.log(
                 'videoConsumers count=' +
                     Object.keys(videoConsumers.current).length
             );
         } else if (kind === 'audio') {
-            delete audioConsumers.current[id][mode];
+            if (mode == MODE_STREAM) {
+                delete audioConsumers.current[id];
+            } else {
+                delete audioConsumers.current[id][mode];
+            }
+
             console.log(
                 'audioConsumers count=' +
                     Object.keys(audioConsumers.current).length
@@ -913,6 +955,13 @@ function MeetRoom(props: any) {
                             ', kind=' +
                             kind
                     );
+                    consumeAdd(
+                        consumerTransport.current,
+                        remoteId,
+                        prdId,
+                        kind,
+                        mode
+                    );
                 }
             });
 
@@ -929,16 +978,16 @@ function MeetRoom(props: any) {
                     kind
                 );
                 removeConsumer(remoteId, kind, mode);
-                removeRemoteVideo(remoteId);
+                removeRemoteVideo(remoteId, mode);
             });
-            socket.on('shareScreenClosed', function (payload: any) {
-                console.log('socket.io shareScreenClosed:', payload);
-                const callerID = payload.callerID;
+            // socket.on('shareScreenClosed', function (payload: any) {
+            //     console.log('socket.io shareScreenClosed:', payload);
+            //     const callerID = payload.callerID;
 
-                removeConsumer(callerID, 'video', 'share_screen');
-                removeConsumer(callerID, 'audio', 'share_screen');
-                removeRemoteVideoByMode(callerID, 'share_screen');
-            });
+            //     removeConsumer(callerID, 'video', MODE_SHARE_SCREEN);
+            //     removeConsumer(callerID, 'audio', MODE_SHARE_SCREEN);
+            //     removeRemoteVideoByMode(callerID, MODE_SHARE_SCREEN);
+            // });
         });
     };
 
@@ -963,28 +1012,34 @@ function MeetRoom(props: any) {
                 <label>audio</label>
             </div>
 
-            <button disabled={isStartMedia} onClick={handleStartMedia}>
-                Start Media
-            </button>
-            <button
-                disabled={!isStartMedia || isConnected}
-                onClick={handleStopMedia}
-            >
-                Stop Media
-            </button>
+            {!isStartMedia ? (
+                <button disabled={isStartMedia} onClick={handleStartMedia}>
+                    Start Media
+                </button>
+            ) : (
+                <button
+                    disabled={!isStartMedia || isConnected}
+                    onClick={handleStopMedia}
+                >
+                    Stop Media
+                </button>
+            )}
+            {!isConnected ? (
+                <button
+                    disabled={isConnected || !isStartMedia}
+                    onClick={handleConnect}
+                >
+                    Connect
+                </button>
+            ) : (
+                <button
+                    disabled={!isConnected || !isStartMedia}
+                    onClick={handleDisconnect}
+                >
+                    Disconnect
+                </button>
+            )}
 
-            <button
-                disabled={isConnected || !isStartMedia}
-                onClick={handleConnect}
-            >
-                Connect
-            </button>
-            <button
-                disabled={!isConnected || !isStartMedia}
-                onClick={handleDisconnect}
-            >
-                Disconnect
-            </button>
             {isShareScreen ? (
                 <button
                     disabled={!isStartMedia || !isConnected}
@@ -1006,6 +1061,7 @@ function MeetRoom(props: any) {
                 <video
                     ref={localVideo}
                     autoPlay
+                    controls
                     style={{
                         width: '240px',
                         height: '180px',
@@ -1014,6 +1070,7 @@ function MeetRoom(props: any) {
                 ></video>
                 <video
                     ref={localScreen}
+                    controls
                     autoPlay
                     style={{
                         width: '240px',
