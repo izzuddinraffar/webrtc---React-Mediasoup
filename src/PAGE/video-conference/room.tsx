@@ -14,7 +14,9 @@ const CreateRemoteVideos = (props: any) => {
         props
             .playVideo(remoteVideo.current, props.peer.stream)
             ?.then(() => {
-                remoteVideo.current.volume = 1.0;
+                remoteVideo.current.volume = 1;
+                console.log('remoteVideo.current');
+                console.log(remoteVideo.current);
             })
             .catch((err: any) => {
                 console.error('media ERROR:', err);
@@ -23,6 +25,7 @@ const CreateRemoteVideos = (props: any) => {
     return (
         <video
             ref={remoteVideo}
+            controls
             autoPlay
             style={{
                 width: '240px',
@@ -350,16 +353,24 @@ function MeetRoom(props: any) {
             return false;
         }
 
-        const newStream = new MediaStream();
-        newStream.addTrack(track);
+        console.log('addremotetrack');
+        console.log(track);
 
         if (consumersStream.current[id] == undefined) {
             consumersStream.current[id] = {};
         }
-        consumersStream.current[id][mode] = {
-            stream: newStream,
-            socket_id: id,
-        };
+
+        if (consumersStream.current[id][mode] == undefined) {
+            const newStream = new MediaStream();
+            newStream.addTrack(track);
+            consumersStream.current[id][mode] = {
+                stream: newStream,
+                socket_id: id,
+            };
+        } else {
+            //add audiotrack
+            consumersStream.current[id][mode].stream.addTrack(track);
+        }
 
         setRemoteVideos((peers: any) => {
             const newPeers: any = peers;
@@ -913,6 +924,13 @@ function MeetRoom(props: any) {
                             ', kind=' +
                             kind
                     );
+                    consumeAdd(
+                        consumerTransport.current,
+                        remoteId,
+                        prdId,
+                        kind,
+                        mode
+                    );
                 }
             });
 
@@ -963,28 +981,34 @@ function MeetRoom(props: any) {
                 <label>audio</label>
             </div>
 
-            <button disabled={isStartMedia} onClick={handleStartMedia}>
-                Start Media
-            </button>
-            <button
-                disabled={!isStartMedia || isConnected}
-                onClick={handleStopMedia}
-            >
-                Stop Media
-            </button>
+            {!isStartMedia ? (
+                <button disabled={isStartMedia} onClick={handleStartMedia}>
+                    Start Media
+                </button>
+            ) : (
+                <button
+                    disabled={!isStartMedia || isConnected}
+                    onClick={handleStopMedia}
+                >
+                    Stop Media
+                </button>
+            )}
+            {!isConnected ? (
+                <button
+                    disabled={isConnected || !isStartMedia}
+                    onClick={handleConnect}
+                >
+                    Connect
+                </button>
+            ) : (
+                <button
+                    disabled={!isConnected || !isStartMedia}
+                    onClick={handleDisconnect}
+                >
+                    Disconnect
+                </button>
+            )}
 
-            <button
-                disabled={isConnected || !isStartMedia}
-                onClick={handleConnect}
-            >
-                Connect
-            </button>
-            <button
-                disabled={!isConnected || !isStartMedia}
-                onClick={handleDisconnect}
-            >
-                Disconnect
-            </button>
             {isShareScreen ? (
                 <button
                     disabled={!isStartMedia || !isConnected}
@@ -1006,6 +1030,7 @@ function MeetRoom(props: any) {
                 <video
                     ref={localVideo}
                     autoPlay
+                    controls
                     style={{
                         width: '240px',
                         height: '180px',
@@ -1014,6 +1039,7 @@ function MeetRoom(props: any) {
                 ></video>
                 <video
                     ref={localScreen}
+                    controls
                     autoPlay
                     style={{
                         width: '240px',
