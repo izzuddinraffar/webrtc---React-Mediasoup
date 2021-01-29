@@ -64,16 +64,9 @@ function MeetRoom(props: any) {
     const [isConnected, setIsConnected] = React.useState(false);
     const [remoteVideos, setRemoteVideos]: any = React.useState({});
     const [isShareScreen, setIsShareScreen] = React.useState(false);
-    const [roomName, setRoomName]: any = React.useState('');
-    // ============ ROOM START ==========
 
-    // ============ ROOM START ==========
-    const handleRoomName = (e: any) => {
-        setRoomName(e.target.value);
-    };
-    // ============ ROOM END ==========
+    // ============ UI button ==========
 
-    // ============ SHARE SCREEN START ==========
     const handleStartScreenShare = () => {
         if (localStreamScreen.current) {
             console.warn('WARN: local media ALREADY started');
@@ -228,10 +221,6 @@ function MeetRoom(props: any) {
 
         await sendRequest('producerStopShareScreen', {});
     }
-
-    // ============ SHARE SCREEN END ==========
-
-    // ============ MEDIA START ==========
 
     const handleUseVideo = (e: any) => {
         setUseVideo(!useVideo);
@@ -906,9 +895,8 @@ function MeetRoom(props: any) {
         return new Promise((resolve: any, reject: any) => {
             const socket = socketRef.current;
 
-            socket.on('connect', async function (evt: any) {
-                console.log('socket.io connected(). prepare room=%s', roomName);
-                await sendRequest('prepare_room', { roomId: roomName });
+            socket.on('connect', function (evt: any) {
+                console.log('socket.io connected()');
             });
             socket.on('error', function (err: any) {
                 console.error('socket.io ERROR:', err);
@@ -1003,8 +991,6 @@ function MeetRoom(props: any) {
         });
     };
 
-    // ============ MEDIA END ==========
-
     return (
         <div>
             <div>
@@ -1038,20 +1024,9 @@ function MeetRoom(props: any) {
                     Stop Media
                 </button>
             )}
-            <input
-                type='text'
-                disabled={isConnected}
-                onChange={handleRoomName}
-                value={roomName}
-                placeholder='room name'
-            />
             {!isConnected ? (
                 <button
-                    disabled={
-                        isConnected ||
-                        !isStartMedia ||
-                        roomName.trim().length == 0
-                    }
+                    disabled={isConnected || !isStartMedia}
                     onClick={handleConnect}
                 >
                     Connect
@@ -1082,7 +1057,7 @@ function MeetRoom(props: any) {
             )}
 
             <div>
-                <div>Local Video</div>
+                local video
                 <video
                     ref={localVideo}
                     autoPlay
@@ -1104,7 +1079,7 @@ function MeetRoom(props: any) {
                     }}
                 ></video>
             </div>
-            <div>Remote Videos</div>
+            <div>remote videos</div>
             {console.log(remoteVideos)}
             {Object.keys(remoteVideos).map((key: any, index: number) => {
                 return Object.keys(remoteVideos[key]).map(
