@@ -13,6 +13,7 @@ function socketMain(io) {
     socket.on('disconnect', function () {
       //   close user connection
       const roomName = getRoomname();
+
       consoleLog(
         'client disconnected. socket id=' +
           getId(socket) +
@@ -40,9 +41,9 @@ function socketMain(io) {
       const roomId = data.roomId;
       const existRoom = Room.getRoom(roomId);
       if (existRoom) {
-        console.log('--- use exist room. roomId=' + roomId);
+        consoleLog('--- use exist room. roomId=' + roomId);
       } else {
-        console.log('--- create new room. roomId=' + roomId);
+        consoleLog('--- create new room. roomId=' + roomId);
         const room = await setupRoom(roomId);
       }
 
@@ -57,7 +58,7 @@ function socketMain(io) {
 
       const roomName = getRoomname();
 
-      console.log('-- createProducerTransport ---room=%s', roomName);
+      consoleLog('-- createProducerTransport ---room=%s', roomName);
       const { transport, params } = await createTransport(roomName);
       addProducerTrasport(roomName, getId(socket), transport);
       transport.observer.on('close', () => {
@@ -105,7 +106,7 @@ function socketMain(io) {
 
       // inform clients about new producer
       if (roomName) {
-        console.log('--broadcast room=%s newProducer ---', roomName);
+        consoleLog('--broadcast room=%s newProducer ---', roomName);
         socket.broadcast.to(roomName).emit('newProducer', {
           socketId: id,
           producerId: producer.id,
@@ -113,7 +114,7 @@ function socketMain(io) {
           mode: mode,
         });
       } else {
-        console.log('--broadcast newProducer ---');
+        consoleLog('--broadcast newProducer ---');
         socket.broadcast.emit('newProducer', {
           socketId: id,
           producerId: producer.id,
@@ -239,9 +240,11 @@ function socketMain(io) {
       });
       consumer.on('producerclose', () => {
         consoleLog('consumer -- on.producerclose');
-        consumer.close();
-        removeConsumer(roomName, localId, remoteId, kind, mode);
 
+        consumer.close();
+        console.log(' consumer.close()');
+        removeConsumer(roomName, localId, remoteId, kind, mode);
+        console.log(' producerClosed');
         // -- notify to client ---
         socket.emit('producerClosed', {
           localId: localId,
@@ -387,6 +390,7 @@ function socketMain(io) {
     const transport = getConsumerTrasnport(roomname, id);
     if (transport) {
       transport.close();
+
       removeConsumerTransport(roomname, id);
     }
 
@@ -394,6 +398,7 @@ function socketMain(io) {
       const videoProducer = getProducer(roomname, id, 'video', MODE_STREAM);
       if (videoProducer) {
         videoProducer.close();
+
         removeProducer(roomname, id, 'video', MODE_STREAM);
       }
     }
@@ -406,6 +411,7 @@ function socketMain(io) {
       );
       if (videoProducer) {
         videoProducer.close();
+
         removeProducer(roomname, id, 'video', MODE_SHARE_SCREEN);
       }
     }
@@ -413,6 +419,7 @@ function socketMain(io) {
       const audioProducer = getProducer(roomname, id, 'audio', MODE_STREAM);
       if (audioProducer) {
         audioProducer.close();
+
         removeProducer(roomname, id, 'audio', MODE_STREAM);
       }
     }
@@ -425,6 +432,7 @@ function socketMain(io) {
       );
       if (audioProducer) {
         audioProducer.close();
+
         removeProducer(roomname, id, 'audio', MODE_SHARE_SCREEN);
       }
     }
@@ -432,6 +440,7 @@ function socketMain(io) {
     const producerTransport = getProducerTrasnport(roomname, id);
     if (producerTransport) {
       producerTransport.close();
+
       removeProducerTransport(roomname, id);
     }
   }
@@ -458,7 +467,7 @@ function socketMain(io) {
 
     addProducerTrasport(id, transport) {
       this.producerTransports[id] = transport;
-      console.log(
+      consoleLog(
         'room=%s producerTransports count=%d',
         this.name,
         Object.keys(this.producerTransports).length
@@ -467,7 +476,7 @@ function socketMain(io) {
 
     removeProducerTransport(id) {
       delete this.producerTransports[id];
-      console.log(
+      consoleLog(
         'room=%s producerTransports count=%d',
         this.name,
         Object.keys(this.producerTransports).length
@@ -536,8 +545,8 @@ function socketMain(io) {
             delete this.videoProducers[id][mode];
           }
         }
-        console.log(this.videoProducers);
-        console.log(
+        consoleLog(this.videoProducers);
+        consoleLog(
           'videoProducers count=' + Object.keys(this.videoProducers).length
         );
       } else if (kind === 'audio') {
@@ -548,12 +557,12 @@ function socketMain(io) {
             delete this.audioProducers[id][mode];
           }
         }
-        console.log(this.audioProducers);
-        console.log(
+        consoleLog(this.audioProducers);
+        consoleLog(
           'audioProducers count=' + Object.keys(this.audioProducers).length
         );
 
-        // console.log(
+        // consoleLog(
         //     'audioProducers count=' + Object.keys(audioProducers).length
         // );
       } else {
@@ -567,7 +576,7 @@ function socketMain(io) {
 
     addConsumerTrasport(id, transport) {
       this.consumerTransports[id] = transport;
-      console.log(
+      consoleLog(
         'room=%s add consumerTransports count=%d',
         this.name,
         Object.keys(this.consumerTransports).length
@@ -576,7 +585,7 @@ function socketMain(io) {
 
     removeConsumerTransport(id) {
       delete this.consumerTransports[id];
-      console.log(
+      consoleLog(
         'room=%s remove consumerTransports count=%d',
         this.name,
         Object.keys(this.consumerTransports).length
@@ -716,8 +725,8 @@ function socketMain(io) {
 
     static addRoom(room, name) {
       Room.rooms[name] = room;
-      console.log('static addRoom. name=%s', room.name);
-      //console.log('static addRoom. name=%s, rooms:%O', room.name, room);
+      consoleLog('static addRoom. name=%s', room.name);
+      //consoleLog('static addRoom. name=%s, rooms:%O', room.name, room);
     }
 
     static getRoom(name) {
@@ -802,7 +811,7 @@ function socketMain(io) {
     // router = await worker.createRouter({ mediaCodecs });
     //producerTransport = await router.createWebRtcTransport(mediasoupOptions.webRtcTransport);
     defaultRoom = await setupRoom('_default_room');
-    console.log('-- mediasoup worker start. -- room:', defaultRoom.name);
+    consoleLog('-- mediasoup worker start. -- room:', defaultRoom.name);
   }
 
   startWorker();
@@ -823,11 +832,11 @@ function socketMain(io) {
 
   function getProducerTrasnport(roomname, id) {
     if (roomname) {
-      console.log('=== getProducerTrasnport use room=%s ===', roomname);
+      consoleLog('=== getProducerTrasnport use room=%s ===', roomname);
       const room = Room.getRoom(roomname);
       return room.getProducerTrasnport(id);
     } else {
-      console.log(
+      consoleLog(
         '=== getProducerTrasnport use defaultRoom room=%s ===',
         roomname
       );
@@ -839,10 +848,10 @@ function socketMain(io) {
     if (roomname) {
       const room = Room.getRoom(roomname);
       room.addProducerTrasport(id, transport);
-      console.log('=== addProducerTrasport use room=%s ===', roomname);
+      consoleLog('=== addProducerTrasport use room=%s ===', roomname);
     } else {
       defaultRoom.addProducerTrasport(id, transport);
-      console.log(
+      consoleLog(
         '=== addProducerTrasport use defaultRoom room=%s ===',
         roomname
       );
@@ -886,10 +895,10 @@ function socketMain(io) {
     if (roomname) {
       const room = Room.getRoom(roomname);
       room.addProducer(id, producer, kind, mode);
-      console.log('=== addProducer use room=%s ===', roomname);
+      consoleLog('=== addProducer use room=%s ===', roomname);
     } else {
       defaultRoom.addProducer(id, producer, kind, mode);
-      console.log('=== addProducer use defaultRoom room=%s ===', roomname);
+      consoleLog('=== addProducer use defaultRoom room=%s ===', roomname);
     }
   }
 
@@ -912,11 +921,11 @@ function socketMain(io) {
 
   function getConsumerTrasnport(roomname, id) {
     if (roomname) {
-      console.log('=== getConsumerTrasnport use room=%s ===', roomname);
+      consoleLog('=== getConsumerTrasnport use room=%s ===', roomname);
       const room = Room.getRoom(roomname);
       return room.getConsumerTrasnport(id);
     } else {
-      console.log(
+      consoleLog(
         '=== getConsumerTrasnport use defaultRoom room=%s ===',
         roomname
       );
@@ -928,10 +937,10 @@ function socketMain(io) {
     if (roomname) {
       const room = Room.getRoom(roomname);
       room.addConsumerTrasport(id, transport);
-      console.log('=== addConsumerTrasport use room=%s ===', roomname);
+      consoleLog('=== addConsumerTrasport use room=%s ===', roomname);
     } else {
       defaultRoom.addConsumerTrasport(id, transport);
-      console.log(
+      consoleLog(
         '=== addConsumerTrasport use defaultRoom room=%s ===',
         roomname
       );
@@ -968,14 +977,14 @@ function socketMain(io) {
     if (roomname) {
       const room = Room.getRoom(roomname);
       room.addConsumer(localId, remoteId, consumer, kind, mode);
-      console.log('=== addConsumer use room=%s ===', roomname);
+      consoleLog('=== addConsumer use room=%s ===', roomname);
     } else {
       defaultRoom.addConsumer(localId, remoteId, consumer, kind, mode);
-      console.log('=== addConsumer use defaultRoom room=%s ===', roomname);
+      consoleLog('=== addConsumer use defaultRoom room=%s ===', roomname);
     }
   }
 
-  function removeConsumer(localId, remoteId, kind, mode) {
+  function removeConsumer(roomname, localId, remoteId, kind, mode) {
     if (mode == undefined) {
       return;
     }
@@ -1010,7 +1019,7 @@ function socketMain(io) {
     const transport = await router.createWebRtcTransport(
       mediasoupOptions.webRtcTransport
     );
-    console.log('-- create transport room=%s id=%s', roomname, transport.id);
+    consoleLog('-- create transport room=%s id=%s', roomname, transport.id);
 
     return {
       transport: transport,

@@ -61,7 +61,7 @@ const CreateRemoteVideos = (props: any) => {
         ></video>
       </div>
 
-      {props.mode == MODE_SHARE_SCREEN ? (
+      {props.mode == MODE_STREAM ? (
         <div>
           {!enableVideoStream ? (
             <button
@@ -837,7 +837,7 @@ function MeetRoom(props: any) {
   async function consumeCurrentProducers(clientId: any) {
     console.log('-- try consuleAll() --');
     const remoteInfo: any = await sendRequest('getCurrentProducers', {
-      localId: clientId.current,
+      localId: clientId,
     }).catch((err) => {
       console.error('getCurrentProducers ERROR:', err);
       return;
@@ -1043,11 +1043,11 @@ function MeetRoom(props: any) {
   // ============ MEDIA END ==========
 
   // ============ MEDIA CLEANUP BEFORE/AFTER START ==========
-  React.useEffect(() => {
-    return () => {
-      handleDisconnect();
-    };
-  }, []);
+  // React.useEffect(() => {
+  //   return () => {
+  //     handleDisconnect();
+  //   };
+  // }, []);
   // ============ MEDIA CLEANUP BEFORE/AFTER END ==========
 
   return (
